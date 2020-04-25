@@ -86,90 +86,102 @@ func newTestReader() (rr *resp3.Reader, reset func(string)) {
 	}
 }
 
-func makeReadAggregationTest(ty resp3.Type, readHeader func(*resp3.Reader) (int64, error)) func(t *testing.T) {
+func makeReadAggregationTest(ty resp3.Type, readHeader func(*resp3.Reader) (int64, bool, error)) func(t *testing.T) {
 	return func(t *testing.T) {
 		rr, reset := newTestReader()
 		for _, c := range []struct {
-			in  string
-			n   int64
-			err error
+			in      string
+			n       int64
+			chunked bool
+			err     error
 		}{
-			{"", 0, resp3.ErrUnexpectedEOL},
-			{"A", 0, resp3.ErrUnexpectedType},
+			{"", 0, false, resp3.ErrUnexpectedEOL},
+			{"A", 0, false, resp3.ErrUnexpectedType},
 
-			{string(resp3.TypeBlobString), 0, resp3.ErrUnexpectedType},
-			{string(resp3.TypeInvalid), 0, resp3.ErrUnexpectedType},
+			{string(resp3.TypeBlobString), 0, false, resp3.ErrUnexpectedType},
+			{string(resp3.TypeInvalid), 0, false, resp3.ErrUnexpectedType},
 
-			{string(ty) + "", 0, resp3.ErrUnexpectedEOL},
-			{string(ty) + "\n", 0, resp3.ErrUnexpectedEOL},
-			{string(ty) + "\n\r", 0, resp3.ErrUnexpectedEOL},
-			{string(ty) + "\r", 0, resp3.ErrUnexpectedEOL},
-			{string(ty) + "\r\n", 0, resp3.ErrUnexpectedEOL},
+			{string(ty) + "", 0, false, resp3.ErrUnexpectedEOL},
+			{string(ty) + "\n", 0, false, resp3.ErrUnexpectedEOL},
+			{string(ty) + "\n\r", 0, false, resp3.ErrUnexpectedEOL},
+			{string(ty) + "\r", 0, false, resp3.ErrUnexpectedEOL},
+			{string(ty) + "\r\n", 0, false, resp3.ErrUnexpectedEOL},
 
-			{string(ty) + "a\r\n", 0, resp3.ErrInvalidAggregateTypeLength},
-			{string(ty) + "-2\r\n", 0, resp3.ErrInvalidAggregateTypeLength},
-			{string(ty) + "-1\r\n", 0, resp3.ErrInvalidAggregateTypeLength},
+			{string(ty) + "a\r\n", 0, false, resp3.ErrInvalidAggregateTypeLength},
+			{string(ty) + "-2\r\n", 0, false, resp3.ErrInvalidAggregateTypeLength},
+			{string(ty) + "-1\r\n", 0, false, resp3.ErrInvalidAggregateTypeLength},
 
-			{string(ty) + "0\r\n", 0, nil},
-			{string(ty) + "1\r\n", 1, nil},
-			{string(ty) + "2\r\n", 2, nil},
+			{string(ty) + "0\r\n", 0, false, nil},
+			{string(ty) + "1\r\n", 1, false, nil},
+			{string(ty) + "2\r\n", 2, false, nil},
+
+			{string(ty) + "?\r\n", -1, true, nil},
 		} {
 			reset(c.in)
-			n, err := readHeader(rr)
+			n, chunked, err := readHeader(rr)
 			assertError(t, err, c.err)
 			if n != c.n {
 				t.Errorf("got n=%d, expected n=%d", n, c.n)
+			}
+			if chunked != c.chunked {
+				t.Errorf("got chunked=%v, expected chunked=%v", chunked, c.chunked)
 			}
 		}
 	}
 }
 
-func makeReadBlobTest(ty resp3.Type, readBlob func(*resp3.Reader, []byte) ([]byte, error)) func(t *testing.T) {
+func makeReadBlobTest(ty resp3.Type, readBlob func(*resp3.Reader, []byte) ([]byte, bool, error)) func(t *testing.T) {
 	return func(t *testing.T) {
 		rr, reset := newTestReader()
 		for _, c := range []struct {
-			in  string
-			s   string
-			err error
+			in      string
+			s       string
+			chunked bool
+			err     error
 		}{
-			{"", "", resp3.ErrUnexpectedEOL},
+			{"", "", false, resp3.ErrUnexpectedEOL},
 
-			{"A", "", resp3.ErrUnexpectedType},
-			{string(resp3.TypeArray), "", resp3.ErrUnexpectedType},
-			{string(resp3.TypeInvalid), "", resp3.ErrUnexpectedType},
+			{"A", "", false, resp3.ErrUnexpectedType},
+			{string(resp3.TypeArray), "", false, resp3.ErrUnexpectedType},
+			{string(resp3.TypeInvalid), "", false, resp3.ErrUnexpectedType},
 
-			{string(ty), "", resp3.ErrUnexpectedEOL},
-			{string(ty) + "\n", "", resp3.ErrUnexpectedEOL},
-			{string(ty) + "\n\r", "", resp3.ErrUnexpectedEOL},
-			{string(ty) + "\r", "", resp3.ErrUnexpectedEOL},
-			{string(ty) + "\r\n", "", resp3.ErrUnexpectedEOL},
+			{string(ty), "", false, resp3.ErrUnexpectedEOL},
+			{string(ty) + "\n", "", false, resp3.ErrUnexpectedEOL},
+			{string(ty) + "\n\r", "", false, resp3.ErrUnexpectedEOL},
+			{string(ty) + "\r", "", false, resp3.ErrUnexpectedEOL},
+			{string(ty) + "\r\n", "", false, resp3.ErrUnexpectedEOL},
 
-			{string(ty) + "-2\r\n", "", resp3.ErrInvalidBlobLength},
-			{string(ty) + "-1\r\n", "", resp3.ErrInvalidBlobLength},
+			{string(ty) + "-2\r\n", "", false, resp3.ErrInvalidBlobLength},
+			{string(ty) + "-1\r\n", "", false, resp3.ErrInvalidBlobLength},
 
-			{string(ty) + "\r\nhello\r\n", "", resp3.ErrUnexpectedEOL},
+			{string(ty) + "\r\nhello\r\n", "", false, resp3.ErrUnexpectedEOL},
 
-			{string(ty) + "0\r\n", "", resp3.ErrUnexpectedEOL},
+			{string(ty) + "0\r\n", "", false, resp3.ErrUnexpectedEOL},
 
-			{string(ty) + "5\r\nhello\r\n", "hello", nil},
+			{string(ty) + "5\r\nhello\r\n", "hello", false, nil},
 
-			{string(ty) + "5\r\nhello world\r\n", "", resp3.ErrUnexpectedEOL},
-			{string(ty) + "10\r\nhello\r\n", "", resp3.ErrUnexpectedEOL},
+			{string(ty) + "5\r\nhello world\r\n", "", false, resp3.ErrUnexpectedEOL},
+			{string(ty) + "10\r\nhello\r\n", "", false, resp3.ErrUnexpectedEOL},
 
-			{string(ty) + "5\r\nhello", "", resp3.ErrUnexpectedEOL},
-			{string(ty) + "5\r\nhello\n", "", resp3.ErrUnexpectedEOL},
-			{string(ty) + "5\r\nhello\n\r", "", resp3.ErrUnexpectedEOL},
-			{string(ty) + "5\r\nhello\r", "", resp3.ErrUnexpectedEOL},
-			{string(ty) + "5\r\nhello\r\r", "", resp3.ErrUnexpectedEOL},
+			{string(ty) + "5\r\nhello", "", false, resp3.ErrUnexpectedEOL},
+			{string(ty) + "5\r\nhello\n", "", false, resp3.ErrUnexpectedEOL},
+			{string(ty) + "5\r\nhello\n\r", "", false, resp3.ErrUnexpectedEOL},
+			{string(ty) + "5\r\nhello\r", "", false, resp3.ErrUnexpectedEOL},
+			{string(ty) + "5\r\nhello\r\r", "", false, resp3.ErrUnexpectedEOL},
 
 			{string(ty) + "11000\r\n" + strings.Repeat("hello world", 1000) + "\r\n",
-				strings.Repeat("hello world", 1000), nil},
+				strings.Repeat("hello world", 1000), false, nil},
+
+			{string(ty) + "?\r\n", "", true, nil},
 		} {
 			reset(c.in)
-			buf, err := readBlob(rr, nil)
+			buf, chunked, err := readBlob(rr, nil)
 			assertError(t, err, c.err)
 			if got := string(buf); got != c.s {
 				t.Errorf("got %q, expected %q", got, c.s)
+			}
+			if chunked != c.chunked {
+				t.Errorf("got chunked=%v, expected chunked=%v", chunked, c.chunked)
 			}
 		}
 	}

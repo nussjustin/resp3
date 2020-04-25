@@ -44,20 +44,20 @@ func dialRedis(tb testing.TB) io.ReadWriteCloser {
 }
 
 var (
-	discardHeaderFuncs = map[resp3.Type]func(*resp3.Reader) (int64, error){
-		resp3.TypeArray: (*resp3.Reader).ReadArrayHeader,
-		resp3.TypePush:  (*resp3.Reader).ReadPushHeader,
-		resp3.TypeSet:   (*resp3.Reader).ReadSetHeader,
-	}
-
-	discardMapHeaderFuncs = map[resp3.Type]func(*resp3.Reader) (int64, error){
+	discardHeaderFuncs = map[resp3.Type]func(*resp3.Reader) (int64, bool, error){
+		resp3.TypeArray:     (*resp3.Reader).ReadArrayHeader,
 		resp3.TypeAttribute: (*resp3.Reader).ReadAttributeHeader,
 		resp3.TypeMap:       (*resp3.Reader).ReadMapHeader,
+		resp3.TypePush:      (*resp3.Reader).ReadPushHeader,
+		resp3.TypeSet:       (*resp3.Reader).ReadSetHeader,
 	}
 
-	discardStringFuncs = map[resp3.Type]func(*resp3.Reader, []byte) ([]byte, error){
-		resp3.TypeBlobError:    (*resp3.Reader).ReadBlobError,
-		resp3.TypeBlobString:   (*resp3.Reader).ReadBlobString,
+	discardBlobFuncs = map[resp3.Type]func(*resp3.Reader, []byte) ([]byte, bool, error){
+		resp3.TypeBlobError:  (*resp3.Reader).ReadBlobError,
+		resp3.TypeBlobString: (*resp3.Reader).ReadBlobString,
+	}
+
+	discardSimpleFuncs = map[resp3.Type]func(*resp3.Reader, []byte) ([]byte, error){
 		resp3.TypeSimpleError:  (*resp3.Reader).ReadSimpleError,
 		resp3.TypeSimpleString: (*resp3.Reader).ReadSimpleString,
 	}
@@ -82,19 +82,21 @@ func discard(tb testing.TB, rr *resp3.Reader) {
 
 	switch {
 	case discardHeaderFuncs[ty] != nil:
-		n, err := discardHeaderFuncs[ty](rr)
+		n, chunked, err := discardHeaderFuncs[ty](rr)
 		assertNoError(err)
-		for i := int64(0); i < n; i++ {
-			discard(tb, rr)
-		}
-	case discardMapHeaderFuncs[ty] != nil:
-		n, err := discardMapHeaderFuncs[ty](rr)
+		discardAggregate(tb, rr, ty, n, chunked)
+	case discardBlobFuncs[ty] != nil:
+		_, chunked, err := discardBlobFuncs[ty](rr, nil)
 		assertNoError(err)
-		for i := int64(0); i < n*2; i++ {
-			discard(tb, rr)
+		for chunked {
+			_, last, err := rr.ReadBlobChunk(nil)
+			assertNoError(err)
+			if last {
+				break
+			}
 		}
-	case discardStringFuncs[ty] != nil:
-		_, err := discardStringFuncs[ty](rr, nil)
+	case discardSimpleFuncs[ty] != nil:
+		_, err := discardSimpleFuncs[ty](rr, nil)
 		assertNoError(err)
 	case discardEmptyFuncs[ty] != nil:
 		assertNoError(discardEmptyFuncs[ty](rr))
@@ -115,6 +117,32 @@ func discard(tb testing.TB, rr *resp3.Reader) {
 			_, err := rr.ReadNumber()
 			assertNoError(err)
 		}
+	}
+}
+
+func discardAggregate(tb testing.TB, rr *resp3.Reader, ty resp3.Type, n int64, chunked bool) {
+	tb.Helper()
+	if chunked {
+		discardStream(tb, rr)
+	} else {
+		if ty == resp3.TypeAttribute || ty == resp3.TypeMap {
+			n *= 2
+		}
+		for i := int64(0); i < n; i++ {
+			discard(tb, rr)
+		}
+	}
+}
+
+func discardStream(tb testing.TB, rr *resp3.Reader) {
+	tb.Helper()
+	for {
+		t, err := rr.Peek()
+		assertError(tb, err, nil)
+		if t == resp3.TypeEnd {
+			break
+		}
+		discard(tb, rr)
 	}
 }
 

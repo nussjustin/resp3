@@ -8,7 +8,7 @@ import (
 
 var (
 	// ErrInvalidAggregateTypeLength is returned when reading or writing an aggregate type header with a length < 0.
-	ErrInvalidAggregateTypeLength = errors.New("aggregate type length must be >= 0")
+	ErrInvalidAggregateTypeLength = errors.New("invalid aggregate type length")
 
 	// ErrInvalidBigNumber is returned when decoding an invalid big number.
 	ErrInvalidBigNumber = errors.New("invalid big number")

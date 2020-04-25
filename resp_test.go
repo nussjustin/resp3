@@ -14,20 +14,60 @@ import (
 )
 
 func makeCopyAggregateFunc(name string,
-	read func(*resp3.Reader) (int64, error),
-	write func(*resp3.Writer, int64) error) func(testing.TB, *resp3.ReadWriter, []byte) {
+	readHeader func(*resp3.Reader) (int64, bool, error),
+	writeHeader func(*resp3.Writer, int64) error,
+	writeStreamHeader func(*resp3.Writer) error) func(testing.TB, *resp3.ReadWriter, []byte) {
 	return func(tb testing.TB, rw *resp3.ReadWriter, _ []byte) {
-		n, err := read(&rw.Reader)
+		n, chunked, err := readHeader(&rw.Reader)
 		if err != nil {
 			tb.Fatalf("failed to read %s header: %s", name, err)
 		}
-		if err := write(&rw.Writer, n); err != nil {
-			tb.Fatalf("failed to write %s header with of size %d: %s", name, n, err)
+		if !chunked {
+			if err := writeHeader(&rw.Writer, n); err != nil {
+				tb.Fatalf("failed to write %s header with size %d: %s", name, n, err)
+			}
+			return
+		}
+		if err := writeStreamHeader(&rw.Writer); err != nil {
+			tb.Fatalf("failed to write %s stream header: %s", name, err)
 		}
 	}
 }
 
 func makeCopyBlobFunc(name string,
+	read func(*resp3.Reader, []byte) ([]byte, bool, error),
+	write func(*resp3.Writer, []byte) error,
+	writeStreamHeader func(*resp3.Writer) error) func(testing.TB, *resp3.ReadWriter, []byte) {
+	return func(tb testing.TB, rw *resp3.ReadWriter, buf []byte) {
+		s, chunked, err := read(&rw.Reader, buf)
+		if err != nil {
+			tb.Fatalf("failed to read %s: %s", name, err)
+		}
+		if !chunked {
+			if err := write(&rw.Writer, s); err != nil {
+				tb.Fatalf("failed to write %s %q: %s", name, s, err)
+			}
+			return
+		}
+		if err := writeStreamHeader(&rw.Writer); err != nil {
+			tb.Fatalf("failed to write %s stream header: %s", name, err)
+		}
+		for {
+			b, last, err := rw.Reader.ReadBlobChunk(nil)
+			if err != nil {
+				tb.Fatalf("failed to read %s chunk: %s", name, err)
+			}
+			if err := rw.Writer.WriteBlobChunk(b); err != nil {
+				tb.Fatalf("failed to write %s chunk: %s", name, err)
+			}
+			if last {
+				break
+			}
+		}
+	}
+}
+
+func makeCopySimpleFunc(name string,
 	read func(*resp3.Reader, []byte) ([]byte, error),
 	write func(*resp3.Writer, []byte) error) func(testing.TB, *resp3.ReadWriter, []byte) {
 	return func(tb testing.TB, rw *resp3.ReadWriter, buf []byte) {
@@ -41,20 +81,16 @@ func makeCopyBlobFunc(name string,
 	}
 }
 
-func makeCopySimpleFunc(name string,
-	read func(*resp3.Reader, []byte) ([]byte, error),
-	write func(*resp3.Writer, []byte) error) func(testing.TB, *resp3.ReadWriter, []byte) {
-	return makeCopyBlobFunc(name, read, write)
-}
-
 var copyFuncs = [255]func(testing.TB, *resp3.ReadWriter, []byte){
 	resp3.TypeInvalid: func(tb testing.TB, rw *resp3.ReadWriter, _ []byte) { tb.Fatal("found invalid type") },
 	resp3.TypeArray: makeCopyAggregateFunc("array",
 		(*resp3.Reader).ReadArrayHeader,
-		(*resp3.Writer).WriteArrayHeader),
+		(*resp3.Writer).WriteArrayHeader,
+		(*resp3.Writer).WriteArrayStreamHeader),
 	resp3.TypeAttribute: makeCopyAggregateFunc("attribute",
 		(*resp3.Reader).ReadAttributeHeader,
-		(*resp3.Writer).WriteAttributeHeader),
+		(*resp3.Writer).WriteAttributeHeader,
+		(*resp3.Writer).WriteAttributeStreamHeader),
 	resp3.TypeBigNumber: func(tb testing.TB, rw *resp3.ReadWriter, _ []byte) {
 		n := new(big.Int)
 		if err := rw.ReadBigNumber(n); err != nil {
@@ -84,10 +120,12 @@ var copyFuncs = [255]func(testing.TB, *resp3.ReadWriter, []byte){
 	},
 	resp3.TypeBlobError: makeCopyBlobFunc("blob error",
 		(*resp3.Reader).ReadBlobError,
-		(*resp3.Writer).WriteBlobError),
+		(*resp3.Writer).WriteBlobError,
+		(*resp3.Writer).WriteBlobErrorStreamHeader),
 	resp3.TypeBlobString: makeCopyBlobFunc("blob string",
 		(*resp3.Reader).ReadBlobString,
-		(*resp3.Writer).WriteBlobString),
+		(*resp3.Writer).WriteBlobString,
+		(*resp3.Writer).WriteBlobStringStreamHeader),
 	resp3.TypeBlobChunk: func(tb testing.TB, rw *resp3.ReadWriter, buf []byte) {
 		s, _, err := rw.ReadBlobChunk(buf)
 		if err != nil {
@@ -107,7 +145,8 @@ var copyFuncs = [255]func(testing.TB, *resp3.ReadWriter, []byte){
 	},
 	resp3.TypeMap: makeCopyAggregateFunc("map",
 		(*resp3.Reader).ReadMapHeader,
-		(*resp3.Writer).WriteMapHeader),
+		(*resp3.Writer).WriteMapHeader,
+		(*resp3.Writer).WriteMapStreamHeader),
 	resp3.TypeNumber: func(tb testing.TB, rw *resp3.ReadWriter, _ []byte) {
 		n, err := rw.ReadNumber()
 		if err != nil {
@@ -127,10 +166,12 @@ var copyFuncs = [255]func(testing.TB, *resp3.ReadWriter, []byte){
 	},
 	resp3.TypePush: makeCopyAggregateFunc("push",
 		(*resp3.Reader).ReadPushHeader,
-		(*resp3.Writer).WritePushHeader),
+		(*resp3.Writer).WritePushHeader,
+		(*resp3.Writer).WritePushStreamHeader),
 	resp3.TypeSet: makeCopyAggregateFunc("set",
 		(*resp3.Reader).ReadSetHeader,
-		(*resp3.Writer).WriteSetHeader),
+		(*resp3.Writer).WriteSetHeader,
+		(*resp3.Writer).WriteSetStreamHeader),
 	resp3.TypeSimpleError: makeCopySimpleFunc("simple error",
 		(*resp3.Reader).ReadSimpleError,
 		(*resp3.Writer).WriteSimpleError),

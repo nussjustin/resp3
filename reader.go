@@ -145,6 +145,21 @@ loop:
 	return n, nil
 }
 
+func (rr *Reader) readChunkableBlob(t Type, dst []byte) ([]byte, bool, error) {
+	if b, err := rr.br.Peek(len("$?\r\n")); err == nil &&
+		b[0] == byte(t) &&
+		b[1] == '?' &&
+		b[2] == '\r' &&
+		b[3] == '\n' {
+		if _, err := rr.br.Discard(len(b)); err != nil {
+			return nil, false, err
+		}
+		return dst, true, nil
+	}
+	b, err := rr.readBlob(t, dst)
+	return b, false, err
+}
+
 func (rr *Reader) readBlob(t Type, dst []byte) ([]byte, error) {
 	if err := rr.expect(t); err != nil {
 		return nil, err
@@ -156,7 +171,8 @@ func (rr *Reader) readBlob(t Type, dst []byte) ([]byte, error) {
 	if n < 0 {
 		return nil, ErrInvalidBlobLength
 	}
-	return rr.readBlobBody(dst, int(n))
+	b, err := rr.readBlobBody(dst, int(n))
+	return b, err
 }
 
 func (rr *Reader) readBlobBody(dst []byte, n int) ([]byte, error) {
@@ -219,28 +235,40 @@ func removeEOLMarker(b []byte) ([]byte, error) {
 	return b[:len(b)-2], nil
 }
 
-func (rr *Reader) readAggregateHeader(t Type) (int64, error) {
+func (rr *Reader) readAggregateHeader(t Type) (int64, bool, error) {
+	if b, err := rr.br.Peek(len("*?\r\n")); err == nil &&
+		b[0] == byte(t) &&
+		b[1] == '?' &&
+		b[2] == '\r' &&
+		b[3] == '\n' {
+		if _, err := rr.br.Discard(len(b)); err != nil {
+			return -1, false, err
+		}
+		return -1, true, nil
+	}
 	if err := rr.expect(t); err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	n, err := rr.readNumber()
 	if n < 0 || err == ErrInvalidNumber {
 		n, err = 0, ErrInvalidAggregateTypeLength
 	}
-	return n, err
+	return n, false, err
 }
 
 // ReadArrayHeader reads an array header, returning the array length.
 //
+// If the array is chunked, n will be set to -1 and chunked will be set to true.
 // If the next type in the response is not an array, ErrUnexpectedType is returned.
-func (rr *Reader) ReadArrayHeader() (int64, error) {
+func (rr *Reader) ReadArrayHeader() (n int64, chunked bool, err error) {
 	return rr.readAggregateHeader(TypeArray)
 }
 
 // ReadAttributeHeader reads an attribute header, returning the attribute size.
 //
+// If the array is chunked, n will be set to -1 and chunked will be set to true.
 // If the next type in the response is not an attribute, ErrUnexpectedType is returned.
-func (rr *Reader) ReadAttributeHeader() (int64, error) {
+func (rr *Reader) ReadAttributeHeader() (n int64, chunked bool, err error) {
 	return rr.readAggregateHeader(TypeAttribute)
 }
 
@@ -268,7 +296,7 @@ func (rr *Reader) ReadBigNumber(n *big.Int) error {
 // whether this was the ending chunk.
 //
 // If the next type in the response is not blob chunk, ErrUnexpectedType is returned.
-func (rr *Reader) ReadBlobChunk(b []byte) ([]byte, bool, error) {
+func (rr *Reader) ReadBlobChunk(b []byte) (bb []byte, last bool, err error) {
 	if t, err := rr.Peek(); err == nil && t != TypeBlobChunk {
 		return nil, false, ErrUnexpectedType
 	}
@@ -292,15 +320,15 @@ func (rr *Reader) ReadBlobChunk(b []byte) ([]byte, bool, error) {
 // ReadBlobError reads a blob error into b, returning the resulting slice.
 //
 // If the next type in the response is not blob error, ErrUnexpectedType is returned.
-func (rr *Reader) ReadBlobError(b []byte) ([]byte, error) {
-	return rr.readBlob(TypeBlobError, b)
+func (rr *Reader) ReadBlobError(b []byte) (bb []byte, chunked bool, err error) {
+	return rr.readChunkableBlob(TypeBlobError, b)
 }
 
 // ReadBlobString reads a blob string into b, returning the resulting slice.
 //
 // If the next type in the response is not blob string, ErrUnexpectedType is returned.
-func (rr *Reader) ReadBlobString(b []byte) ([]byte, error) {
-	return rr.readBlob(TypeBlobString, b)
+func (rr *Reader) ReadBlobString(b []byte) (bb []byte, chunked bool, err error) {
+	return rr.readChunkableBlob(TypeBlobString, b)
 }
 
 // ReadBoolean reads a boolean.
@@ -353,8 +381,9 @@ func (rr *Reader) ReadEnd() error {
 
 // ReadMapHeader reads a map header, returning the map size.
 //
+// If the array is chunked, n will be set to -1 and chunked will be set to true.
 // If the next type in the response is not a map, ErrUnexpectedType is returned.
-func (rr *Reader) ReadMapHeader() (int64, error) {
+func (rr *Reader) ReadMapHeader() (n int64, chunked bool, err error) {
 	return rr.readAggregateHeader(TypeMap)
 }
 
@@ -380,15 +409,17 @@ func (rr *Reader) ReadNumber() (int64, error) {
 
 // ReadPushHeader reads a push header, returning the push size.
 //
+// If the array is chunked, n will be set to -1 and chunked will be set to true.
 // If the next type in the response is not a push, ErrUnexpectedType is returned.
-func (rr *Reader) ReadPushHeader() (int64, error) {
+func (rr *Reader) ReadPushHeader() (n int64, chunked bool, err error) {
 	return rr.readAggregateHeader(TypePush)
 }
 
 // ReadSetHeader reads a set header, returning the set size.
 //
+// If the array is chunked, n will be set to -1 and chunked will be set to true.
 // If the next type in the response is not a set, ErrUnexpectedType is returned.
-func (rr *Reader) ReadSetHeader() (int64, error) {
+func (rr *Reader) ReadSetHeader() (n int64, chunked bool, err error) {
 	return rr.readAggregateHeader(TypeSet)
 }
 

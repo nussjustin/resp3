@@ -58,8 +58,12 @@ func TestWriterReset(t *testing.T) {
 }
 
 func TestWriterWrite(t *testing.T) {
-	t.Run("Array", makeWriteAggregationTest('*', (*resp3.Writer).WriteArrayHeader))
-	t.Run("Attribute", makeWriteAggregationTest('|', (*resp3.Writer).WriteAttributeHeader))
+	t.Run("Array", makeWriteAggregationTest('*',
+		(*resp3.Writer).WriteArrayHeader,
+		(*resp3.Writer).WriteArrayStreamHeader))
+	t.Run("Attribute", makeWriteAggregationTest('|',
+		(*resp3.Writer).WriteAttributeHeader,
+		(*resp3.Writer).WriteAttributeStreamHeader))
 	t.Run("BigNumber", testWriteBigNumber)
 	t.Run("Boolean", testWriteBoolean)
 	t.Run("Double", testWriteDouble)
@@ -69,11 +73,17 @@ func TestWriterWrite(t *testing.T) {
 	t.Run("BlobStringStreamHeader", makeWriteBlobStreamHeader('$', (*resp3.Writer).WriteBlobStringStreamHeader))
 	t.Run("BlobChunk", testWriteBlobChunk)
 	t.Run("End", testWriteEnd)
-	t.Run("Map", makeWriteAggregationTest('%', (*resp3.Writer).WriteMapHeader))
+	t.Run("Map", makeWriteAggregationTest('%',
+		(*resp3.Writer).WriteMapHeader,
+		(*resp3.Writer).WriteMapStreamHeader))
 	t.Run("Null", testWriteNull)
 	t.Run("Number", testWriteNumber)
-	t.Run("Push", makeWriteAggregationTest('>', (*resp3.Writer).WritePushHeader))
-	t.Run("Set", makeWriteAggregationTest('~', (*resp3.Writer).WriteSetHeader))
+	t.Run("Push", makeWriteAggregationTest('>',
+		(*resp3.Writer).WritePushHeader,
+		(*resp3.Writer).WritePushStreamHeader))
+	t.Run("Set", makeWriteAggregationTest('~',
+		(*resp3.Writer).WriteSetHeader,
+		(*resp3.Writer).WriteSetStreamHeader))
 	t.Run("SimpleError", makeWriteSimpleTest('-', (*resp3.Writer).WriteSimpleError))
 	t.Run("SimpleString", makeWriteSimpleTest('+', (*resp3.Writer).WriteSimpleString))
 	t.Run("VerbatimString", testWriteVerbatimString)
@@ -105,22 +115,31 @@ func newTestWriter(t *testing.T) (rw *resp3.Writer, assert func(expected string,
 	}
 }
 
-func makeWriteAggregationTest(ty resp3.Type, writeHeader func(*resp3.Writer, int64) error) func(t *testing.T) {
+func makeWriteAggregationTest(ty resp3.Type,
+	writeHeader func(*resp3.Writer, int64) error,
+	writeStreamHeader func(*resp3.Writer) error) func(t *testing.T) {
 	return func(t *testing.T) {
-		rw, assert := newTestWriter(t)
-		for _, c := range []struct {
-			i   int64
-			s   string
-			err error
-		}{
-			{-10, "", resp3.ErrInvalidAggregateTypeLength},
-			{-1, string(ty) + "?\r\n", nil},
-			{0, string(ty) + "0\r\n", nil},
-			{1, string(ty) + "1\r\n", nil},
-			{10, string(ty) + "10\r\n", nil},
-		} {
-			assert(c.s, c.err, writeHeader(rw, c.i))
-		}
+		t.Run("Fixed", func(t *testing.T) {
+			rw, assert := newTestWriter(t)
+			for _, c := range []struct {
+				i   int64
+				s   string
+				err error
+			}{
+				{-10, "", resp3.ErrInvalidAggregateTypeLength},
+				{-1, "", resp3.ErrInvalidAggregateTypeLength},
+				{0, string(ty) + "0\r\n", nil},
+				{1, string(ty) + "1\r\n", nil},
+				{10, string(ty) + "10\r\n", nil},
+			} {
+				assert(c.s, c.err, writeHeader(rw, c.i))
+			}
+		})
+
+		t.Run("Streamed", func(t *testing.T) {
+			rw, assert := newTestWriter(t)
+			assert(string(ty)+"?\r\n", nil, writeStreamHeader(rw))
+		})
 	}
 }
 

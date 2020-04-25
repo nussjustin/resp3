@@ -27,15 +27,16 @@ func (rw *Writer) Reset(w io.Writer) {
 }
 
 func (rw *Writer) writeAggregateHeader(t Type, n int64) error {
-	if n == -1 {
-		rw.buf = append(rw.buf[:0], byte(t), '?', '\r', '\n')
-		_, err := rw.w.Write(rw.buf)
-		return err
-	}
 	if n < 0 {
 		return ErrInvalidAggregateTypeLength
 	}
 	return rw.writeNumber(t, n)
+}
+
+func (rw *Writer) writeAggregateStreamHeader(t Type) error {
+	rw.buf = append(rw.buf[:0], byte(t), '?', '\r', '\n')
+	_, err := rw.w.Write(rw.buf)
+	return err
 }
 
 func (rw *Writer) writeBlobStreamHeader(t Type) error {
@@ -76,18 +77,26 @@ func (rw *Writer) writeSimple(t Type, s []byte) error {
 
 // WriteArrayHeader writes an array header for an array of length n.
 //
-// If n == -1, the header will denote a streamed aggregation.
-// Otherwise if n is < -1, ErrInvalidAggregateTypeLength is returned.
+// If n is < -1, ErrInvalidAggregateTypeLength is returned.
 func (rw *Writer) WriteArrayHeader(n int64) error {
 	return rw.writeAggregateHeader(TypeArray, n)
 }
 
+// WriteArrayStreamHeader writes an array header for a streamed array.
+func (rw *Writer) WriteArrayStreamHeader() error {
+	return rw.writeAggregateStreamHeader(TypeArray)
+}
+
 // WriteAttributeHeader writes an attribute header for an attribute with n field-value items.
 //
-// If n == -1, the header will denote a streamed aggregation.
-// Otherwise if n is < -1, ErrInvalidAggregateTypeLength is returned.
+// If n is < -1, ErrInvalidAggregateTypeLength is returned.
 func (rw *Writer) WriteAttributeHeader(n int64) error {
 	return rw.writeAggregateHeader(TypeAttribute, n)
+}
+
+// WriteAttributeStreamHeader writes an attribute header for a streamed attribute.
+func (rw *Writer) WriteAttributeStreamHeader() error {
+	return rw.writeAggregateStreamHeader(TypeAttribute)
 }
 
 // WriteBigNumber writes n using the RESP big number type.
@@ -172,10 +181,14 @@ func (rw *Writer) WriteEnd() error {
 
 // WriteMapHeader writes a map header for a map with n field-value items.
 //
-// If n == -1, the header will denote a streamed aggregation.
-// Otherwise if n is < -1, ErrInvalidAggregateTypeLength is returned.
+// If n is < -1, ErrInvalidAggregateTypeLength is returned.
 func (rw *Writer) WriteMapHeader(n int64) error {
 	return rw.writeAggregateHeader(TypeMap, n)
+}
+
+// WriteMapStreamHeader writes a map header for a streamed map.
+func (rw *Writer) WriteMapStreamHeader() error {
+	return rw.writeAggregateStreamHeader(TypeMap)
 }
 
 var nullBytes = []byte("_\r\n")
@@ -193,18 +206,26 @@ func (rw *Writer) WriteNumber(n int64) error {
 
 // WritePushHeader writes a push header for a push array with n items.
 //
-// If n == -1, the header will denote a streamed aggregation.
-// Otherwise if n is < -1, ErrInvalidAggregateTypeLength is returned.
+// If n is < -1, ErrInvalidAggregateTypeLength is returned.
 func (rw *Writer) WritePushHeader(n int64) error {
 	return rw.writeAggregateHeader(TypePush, n)
 }
 
+// WritePushStreamHeader writes a set header for a streamed push.
+func (rw *Writer) WritePushStreamHeader() error {
+	return rw.writeAggregateStreamHeader(TypePush)
+}
+
 // WriteSetHeader writes a set header for a set with n items.
 //
-// If n == -1, the header will denote a streamed aggregation.
-// Otherwise if n is < -1, ErrInvalidAggregateTypeLength is returned.
+// If n is < -1, ErrInvalidAggregateTypeLength is returned.
 func (rw *Writer) WriteSetHeader(n int64) error {
 	return rw.writeAggregateHeader(TypeSet, n)
+}
+
+// WriteSetStreamHeader writes a set header for a streamed set.
+func (rw *Writer) WriteSetStreamHeader() error {
+	return rw.writeAggregateStreamHeader(TypeSet)
 }
 
 // WriteSimpleError writes the byte slice s as a simple error.

@@ -44,14 +44,34 @@ func assertReadNumberFunc(tb testing.TB, typeName string, f func() (int64, error
 	}
 }
 
-func assertReadSetHeader(tb testing.TB, r *resp3.Reader, n int64) {
+func assertReadSetHeader(tb testing.TB, r *resp3.Reader, n int64, c bool) {
 	tb.Helper()
-	assertReadNumberFunc(tb, "set header", r.ReadSetHeader, n)
+
+	gn, gc, err := r.ReadSetHeader()
+	switch {
+	case err != nil:
+		tb.Fatalf("failed to read set header: %s", err)
+	case gn != n:
+		tb.Fatalf("got %d, expected %d", gn, n)
+	case gc != c:
+		tb.Fatalf("got chunked=%v, expected chunked=%v", gc, c)
+	}
 }
 
-func assertReadBlobString(tb testing.TB, r *resp3.Reader, s []byte) {
+func assertReadBlobString(tb testing.TB, r *resp3.Reader, s []byte, c bool) {
 	tb.Helper()
-	assertReadBytesFunc(tb, "blob string", r.ReadBlobString, s)
+
+	gs, gc, err := r.ReadBlobString(nil)
+	switch {
+	case err != nil:
+		tb.Fatalf("failed to read blob string: %s", err)
+	case !bytes.Equal(gs, s):
+		tb.Fatalf("got %q, expected %q", gs, s)
+	case (gs == nil && s != nil) || (gs != nil && s == nil):
+		tb.Fatalf("got %#v, expected %#v", gs, s)
+	case gc != c:
+		tb.Fatalf("got chunked=%v, expected chunked=%v", gc, c)
+	}
 }
 
 func assertReadError(tb testing.TB, r *resp3.Reader, s []byte) {
@@ -88,17 +108,17 @@ func TestReaderIntegration(t *testing.T) {
 		mustWriteLines(t, conn, "*4", "$3", "SET", "$6", "string", "$6", "value2", "$2", "NX")
 		assertReadNull(t, r)
 		mustWriteLines(t, conn, "*2", "$3", "GET", "$6", "string")
-		assertReadBlobString(t, r, []byte("value1"))
+		assertReadBlobString(t, r, []byte("value1"), false)
 
 		mustWriteLines(t, conn, "*2", "$8", "SMEMBERS", "$3", "set")
-		assertReadSetHeader(t, r, 0)
+		assertReadSetHeader(t, r, 0, false)
 		mustWriteLines(t, conn, "*3", "$4", "SADD", "$3", "set", "$6", "value3")
 		assertReadNumber(t, r, 1)
 		mustWriteLines(t, conn, "*3", "$4", "SADD", "$3", "set", "$6", "value3")
 		assertReadNumber(t, r, 0)
 		mustWriteLines(t, conn, "*2", "$8", "SMEMBERS", "$3", "set")
-		assertReadSetHeader(t, r, 1)
-		assertReadBlobString(t, r, []byte("value3"))
+		assertReadSetHeader(t, r, 1, false)
+		assertReadBlobString(t, r, []byte("value3"), false)
 
 		mustWriteLines(t, conn, "*4", "$4", "ZADD", "$3", "set", "$3", "100", "$6", "value4")
 		assertReadError(t, r, []byte("WRONGTYPE Operation against a key holding the wrong kind of value"))
