@@ -1,0 +1,9 @@
+run:
+  build-tags:
+  - integration
+linters:
+  enable-all: true
+  disable:
+    - gochecknoglobals
+    - gocognit
+    - wsl
