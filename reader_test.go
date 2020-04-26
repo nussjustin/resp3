@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"math"
 	"math/big"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -142,9 +143,10 @@ func runBlobReadTest(t *testing.T, ty resp3.Type, readBlob func(*resp3.Reader, [
 	p := newTypePrefixFunc(ty)
 	rr, reset := newTestReader()
 	for _, c := range []struct {
-		in  string
-		s   string
-		err error
+		in    string
+		limit int
+		s     string
+		err   error
 	}{
 		{err: resp3.ErrUnexpectedEOL},
 
@@ -174,9 +176,43 @@ func runBlobReadTest(t *testing.T, ty resp3.Type, readBlob func(*resp3.Reader, [
 		{in: p("5\r\nhello\r"), err: resp3.ErrUnexpectedEOL},
 		{in: p("5\r\nhello\r\r"), err: resp3.ErrUnexpectedEOL},
 
-		{in: p("11000\r\n") + strings.Repeat("hello world", 1000) + "\r\n",
-			s: strings.Repeat("hello world", 1000)},
+		{
+			in: p("11000\r\n") + strings.Repeat("hello world", 1000) + "\r\n",
+			s:  strings.Repeat("hello world", 1000),
+		},
+
+		{
+			in: p(strconv.Itoa(resp3.DefaultSingleReadSizeLimit) + "\r\n" +
+				strings.Repeat("a", resp3.DefaultSingleReadSizeLimit) + "\r\n"),
+			s: strings.Repeat("a", resp3.DefaultSingleReadSizeLimit),
+		},
+
+		{
+			in: p(strconv.Itoa(resp3.DefaultSingleReadSizeLimit+1) + "\r\n" +
+				strings.Repeat("a", resp3.DefaultSingleReadSizeLimit+1) + "\r\n"),
+			err: resp3.ErrSingleReadSizeLimitExceeded,
+		},
+
+		{
+			in: p(strconv.Itoa(resp3.DefaultSingleReadSizeLimit+1) + "\r\n" +
+				strings.Repeat("a", resp3.DefaultSingleReadSizeLimit+1) + "\r\n"),
+			limit: -1,
+			s:     strings.Repeat("a", resp3.DefaultSingleReadSizeLimit+1),
+		},
+
+		{
+			in:    p("5\r\nhello\r\n"),
+			limit: 5,
+			s:     "hello",
+		},
+
+		{
+			in:    p("5\r\nhello\r\n"),
+			limit: 4,
+			err:   resp3.ErrSingleReadSizeLimitExceeded,
+		},
 	} {
+		rr.SingleReadSizeLimit = c.limit
 		reset(c.in)
 		buf, chunked, err := readBlob(rr, nil)
 		assertError(t, c.err, err)
@@ -254,9 +290,10 @@ func runSimpleReadTest(t *testing.T, ty resp3.Type, readSimple func(*resp3.Reade
 	p := newTypePrefixFunc(ty)
 	rr, reset := newTestReader()
 	for _, c := range []struct {
-		in  string
-		s   string
-		err error
+		in    string
+		limit int
+		s     string
+		err   error
 	}{
 		{err: resp3.ErrUnexpectedEOL},
 
@@ -272,9 +309,41 @@ func runSimpleReadTest(t *testing.T, ty resp3.Type, readSimple func(*resp3.Reade
 
 		{in: p("\r\n")},
 		{in: p("OK\r\n"), s: "OK"},
-		{in: p(strings.Repeat("hello world", 1000) + "\r\n"),
-			s: strings.Repeat("hello world", 1000)},
+
+		{
+			in: p(strings.Repeat("hello world", 1000) + "\r\n"),
+			s:  strings.Repeat("hello world", 1000),
+		},
+
+		{
+			in: p(strings.Repeat("a", resp3.DefaultSingleReadSizeLimit) + "\r\n"),
+			s:  strings.Repeat("a", resp3.DefaultSingleReadSizeLimit),
+		},
+
+		{
+			in:  p(strings.Repeat("a", resp3.DefaultSingleReadSizeLimit+1) + "\r\n"),
+			err: resp3.ErrSingleReadSizeLimitExceeded,
+		},
+
+		{
+			in:    p(strings.Repeat("a", resp3.DefaultSingleReadSizeLimit+1) + "\r\n"),
+			limit: -1,
+			s:     strings.Repeat("a", resp3.DefaultSingleReadSizeLimit+1),
+		},
+
+		{
+			in:    p("hello\r\n"),
+			limit: 5,
+			s:     "hello",
+		},
+
+		{
+			in:    p("hello\r\n"),
+			limit: 4,
+			err:   resp3.ErrSingleReadSizeLimitExceeded,
+		},
 	} {
+		rr.SingleReadSizeLimit = c.limit
 		reset(c.in)
 		buf, err := readSimple(rr, nil)
 		assertError(t, c.err, err)
@@ -613,9 +682,10 @@ func testReadVerbatimString(t *testing.T) {
 	p := newTypePrefixFunc(resp3.TypeVerbatimString)
 	rr, reset := newTestReader()
 	for _, c := range []struct {
-		in  string
-		s   string
-		err error
+		in    string
+		limit int
+		s     string
+		err   error
 	}{
 		{err: resp3.ErrUnexpectedEOL},
 
@@ -649,9 +719,43 @@ func testReadVerbatimString(t *testing.T) {
 		{in: p("7\r\nfoo:bar\r"), err: resp3.ErrUnexpectedEOL},
 		{in: p("7\r\nfoo:bar\r\r"), err: resp3.ErrUnexpectedEOL},
 
-		{in: p("11004\r\nfoo:" + strings.Repeat("hello world", 1000) + "\r\n"),
-			s: "foo:" + strings.Repeat("hello world", 1000)},
+		{
+			in: p("11004\r\nfoo:" + strings.Repeat("hello world", 1000) + "\r\n"),
+			s:  "foo:" + strings.Repeat("hello world", 1000),
+		},
+
+		{
+			in: p(strconv.Itoa(resp3.DefaultSingleReadSizeLimit) + "\r\nfoo:" +
+				strings.Repeat("a", resp3.DefaultSingleReadSizeLimit-len("foo:")) + "\r\n"),
+			s: "foo:" + strings.Repeat("a", resp3.DefaultSingleReadSizeLimit-len("foo:")),
+		},
+
+		{
+			in: p(strconv.Itoa(resp3.DefaultSingleReadSizeLimit+1) + "\r\nfoo:" +
+				strings.Repeat("a", resp3.DefaultSingleReadSizeLimit-len("foo:")+1) + "\r\n"),
+			err: resp3.ErrSingleReadSizeLimitExceeded,
+		},
+
+		{
+			in: p(strconv.Itoa(resp3.DefaultSingleReadSizeLimit+1) + "\r\nfoo:" +
+				strings.Repeat("a", resp3.DefaultSingleReadSizeLimit-len("foo:")+1) + "\r\n"),
+			limit: -1,
+			s:     "foo:" + strings.Repeat("a", resp3.DefaultSingleReadSizeLimit-len("foo:")+1),
+		},
+
+		{
+			in:    p("7\r\nfoo:bar\r\n"),
+			limit: 7,
+			s:     "foo:bar",
+		},
+
+		{
+			in:    p("7\r\nfoo:bar\r\n"),
+			limit: 6,
+			err:   resp3.ErrSingleReadSizeLimitExceeded,
+		},
 	} {
+		rr.SingleReadSizeLimit = c.limit
 		reset(c.in)
 		buf, err := rr.ReadVerbatimString(nil)
 		assertError(t, c.err, err)

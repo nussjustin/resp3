@@ -7,6 +7,9 @@ import (
 )
 
 var (
+	// ErrSingleReadSizeLimitExceeded is returned when reading blob or simple values longer than the configured limit.
+	ErrSingleReadSizeLimitExceeded = errors.New("single read size limit exceeded")
+
 	// ErrInvalidAggregateTypeLength is returned when reading or writing an aggregate type header with a length < 0.
 	ErrInvalidAggregateTypeLength = errors.New("invalid aggregate type length")
 

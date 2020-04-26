@@ -12,12 +12,24 @@ import (
 
 // Reader wraps an io.Reader and provides methods for reading the RESP protocol.
 type Reader struct {
+	// SingleReadSizeLimit defines the maximum size of blobs (either errors, strings or chunks) that can can be read,
+	// excluding the type, line endings and, in case of blobs, the size. If the Reader encounters a value larger than
+	// this limit, an error wrapping ErrSingleReadSizeLimitExceeded will be returned.
+	// If SingleReadSizeLimit is 0, DefaultSingleReadSizeLimit is used instead.
+	// A negative < 0 value disables the limit.
+	SingleReadSizeLimit int
+
 	br *bufio.Reader
 
 	// ownbr holds a *bufio.Reader that is reused when calling Reset. This is used in cases the io.Reader given to
 	// Reset is already a *bufio.Reader to avoid reusing the user given *bufio.Reader when calling Reset.
 	ownbr *bufio.Reader
 }
+
+const (
+	// DefaultSingleReadSizeLimit defines the default read limit for values used when Reader.SingleReadSizeLimit is 0.
+	DefaultSingleReadSizeLimit = 1 << 25 // 32MiB
+)
 
 // NewReader returns a *Reader that uses the given io.Reader for reads.
 //
@@ -75,6 +87,17 @@ func wrapEOF(err error, msg string, args ...interface{}) error {
 	default:
 		return fmt.Errorf("%w: expected "+msg+", got EOF", append([]interface{}{ErrUnexpectedEOL}, args...)...)
 	}
+}
+
+func (rr *Reader) checkReadSizeLimit(n int) error {
+	l := rr.SingleReadSizeLimit
+	if l == 0 {
+		l = DefaultSingleReadSizeLimit
+	}
+	if l > 0 && l < n {
+		return fmt.Errorf("%w: value of size %d exceeds configured limit", ErrSingleReadSizeLimitExceeded, n)
+	}
+	return nil
 }
 
 func (rr *Reader) consume(b []byte) bool {
@@ -190,6 +213,9 @@ func (rr *Reader) readBlob(t Type, dst []byte) ([]byte, error) {
 }
 
 func (rr *Reader) readBlobBody(dst []byte, n int) ([]byte, error) {
+	if err := rr.checkReadSizeLimit(n); err != nil {
+		return nil, err
+	}
 	dst = ensureSpace(dst, n)
 	for n > 0 {
 		line, err := rr.br.Peek(n)
@@ -209,10 +235,14 @@ func (rr *Reader) readBlobBody(dst []byte, n int) ([]byte, error) {
 }
 
 func (rr *Reader) readLine(dst []byte) ([]byte, error) {
+	slen := len(dst)
 	for {
 		line, err := rr.br.ReadSlice('\n')
 		if err != nil && err != bufio.ErrBufferFull {
 			return nil, wrapEOF(err, "")
+		}
+		if err := rr.checkReadSizeLimit(len(line) - len("\r\n") + len(dst) - slen); err != nil {
+			return nil, err
 		}
 		dst = append(dst, line...)
 		if line[len(line)-1] == '\n' {
