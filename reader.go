@@ -475,12 +475,13 @@ func (rr *Reader) ReadSimpleString(b []byte) ([]byte, error) {
 //
 // If the next type in the response is not simple string, ErrUnexpectedType is returned.
 func (rr *Reader) ReadVerbatimString(b []byte) ([]byte, error) {
+	oldLen := len(b)
 	b, err := rr.readBlob(TypeVerbatimString, b)
 	if err != nil {
 		return nil, err
 	}
-	if len(b) < verbatimPrefixLength+1 || b[verbatimPrefixLength] != ':' {
-		p := b
+	if bs := b[oldLen:]; len(bs) < verbatimPrefixLength+1 || bs[verbatimPrefixLength] != ':' {
+		p := bs
 		if n := verbatimPrefixLength*verbatimPrefixLength + 1; len(p) >= n {
 			p = p[:n]
 		}
