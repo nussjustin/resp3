@@ -13,13 +13,13 @@ import (
 
 func TestReaderReset(t *testing.T) {
 	rr := resp3.NewReader(strings.NewReader(""))
-	assertError(t, rr.ReadEnd(), resp3.ErrUnexpectedEOL)
+	assertError(t, resp3.ErrUnexpectedEOL, rr.ReadEnd())
 	rr.Reset(strings.NewReader(".\r\n"))
-	assertError(t, rr.ReadEnd(), nil)
-	assertError(t, rr.ReadEnd(), resp3.ErrUnexpectedEOL)
+	assertError(t, nil, rr.ReadEnd())
+	assertError(t, resp3.ErrUnexpectedEOL, rr.ReadEnd())
 	rr.Reset(strings.NewReader(".\r\n"))
-	assertError(t, rr.ReadEnd(), nil)
-	assertError(t, rr.ReadEnd(), resp3.ErrUnexpectedEOL)
+	assertError(t, nil, rr.ReadEnd())
+	assertError(t, resp3.ErrUnexpectedEOL, rr.ReadEnd())
 }
 
 func TestReaderPeek(t *testing.T) {
@@ -47,7 +47,7 @@ func TestReaderPeek(t *testing.T) {
 		rr := resp3.NewReader(bytes.NewReader([]byte{i}))
 
 		ty, err := rr.Peek()
-		assertError(t, err, nil)
+		assertError(t, nil, err)
 		if types[resp3.Type(i)] && ty != resp3.Type(i) {
 			t.Errorf("got %v, expected %v", ty, resp3.Type(i))
 		} else if !types[resp3.Type(i)] && ty != resp3.TypeInvalid {
@@ -119,7 +119,7 @@ func makeReadAggregationTest(ty resp3.Type, readHeader func(*resp3.Reader) (int6
 		} {
 			reset(c.in)
 			n, chunked, err := readHeader(rr)
-			assertError(t, err, c.err)
+			assertError(t, c.err, err)
 			if n != c.n {
 				t.Errorf("got n=%d, expected n=%d", n, c.n)
 			}
@@ -176,7 +176,7 @@ func makeReadBlobTest(ty resp3.Type, readBlob func(*resp3.Reader, []byte) ([]byt
 		} {
 			reset(c.in)
 			buf, chunked, err := readBlob(rr, nil)
-			assertError(t, err, c.err)
+			assertError(t, c.err, err)
 			if got := string(buf); got != c.s {
 				t.Errorf("got %q, expected %q", got, c.s)
 			}
@@ -213,7 +213,7 @@ func makeReadEmptyTest(ty resp3.Type, readEmpty func(*resp3.Reader) error) func(
 			{string(ty) + "A\r\n", resp3.ErrUnexpectedEOL},
 		} {
 			reset(c.in)
-			assertError(t, readEmpty(rr), c.err)
+			assertError(t, c.err, readEmpty(rr))
 		}
 	}
 }
@@ -245,7 +245,7 @@ func makeReadSimpleTest(ty resp3.Type, readSimple func(*resp3.Reader, []byte) ([
 		} {
 			reset(c.in)
 			buf, err := readSimple(rr, nil)
-			assertError(t, err, c.err)
+			assertError(t, c.err, err)
 			if got := string(buf); got != c.s {
 				t.Errorf("got %q, expected %q", got, c.s)
 			}
@@ -301,7 +301,7 @@ func testReadBigNumber(t *testing.T) {
 		reset(c.in)
 		n := new(big.Int)
 		err := rr.ReadBigNumber(n)
-		assertError(t, err, c.err)
+		assertError(t, c.err, err)
 		if c.n != nil && c.n.Cmp(n) != 0 {
 			t.Errorf("got %s, expected %s", n, c.n)
 		}
@@ -346,7 +346,7 @@ func testReadBoolean(t *testing.T) {
 	} {
 		reset(c.in)
 		b, err := rr.ReadBoolean()
-		assertError(t, err, c.err)
+		assertError(t, c.err, err)
 		if b != c.b {
 			t.Errorf("got %v, expected %v", b, c.b)
 		}
@@ -409,7 +409,7 @@ func testReadDouble(t *testing.T) {
 	} {
 		reset(c.in)
 		f, err := rr.ReadDouble()
-		assertError(t, err, c.err)
+		assertError(t, c.err, err)
 		if f != c.f {
 			t.Errorf("got %f, expected %f", f, c.f)
 		}
@@ -459,7 +459,7 @@ func testReadBlobChunk(t *testing.T) {
 	} {
 		reset(c.in)
 		buf, last, err := rr.ReadBlobChunk(nil)
-		assertError(t, err, c.err)
+		assertError(t, c.err, err)
 		if got := string(buf); got != c.s {
 			t.Errorf("got %q, expected %q", got, c.s)
 		}
@@ -500,13 +500,13 @@ func testReadNumber(t *testing.T) {
 		{string(resp3.TypeNumber) + "1.0\r\n", 0, resp3.ErrInvalidNumber},
 		{string(resp3.TypeNumber) + "1.01\r\n", 0, resp3.ErrInvalidNumber},
 		{string(resp3.TypeNumber) + "#\r\n", 0, resp3.ErrInvalidNumber},
-		{string(resp3.TypeNumber) + "-\r\n", 0, resp3.ErrInvalidNumber},
+		{string(resp3.TypeNumber) + "-\r\n", 0, resp3.ErrUnexpectedEOL},
 		{string(resp3.TypeNumber) + "+\r\n", 0, resp3.ErrInvalidNumber},
 		{string(resp3.TypeNumber) + "+1\r\n", 0, resp3.ErrInvalidNumber},
 	} {
 		reset(c.in)
 		n, err := rr.ReadNumber()
-		assertError(t, err, c.err)
+		assertError(t, c.err, err)
 		if n != c.n {
 			t.Errorf("got %d, expected %d", n, c.n)
 		}
@@ -557,7 +557,7 @@ func testReadVerbatimString(t *testing.T) {
 	} {
 		reset(c.in)
 		buf, err := rr.ReadVerbatimString(nil)
-		assertError(t, err, c.err)
+		assertError(t, c.err, err)
 		if got := string(buf); got != c.s {
 			t.Errorf("got %q, expected %q", got, c.s)
 		}

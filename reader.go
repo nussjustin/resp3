@@ -2,6 +2,8 @@ package resp3
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"strconv"
@@ -54,16 +56,32 @@ func (rr *Reader) Peek() (Type, error) {
 	return types[b[0]], nil
 }
 
+var errUnexpectedEOF = fmt.Errorf("%w: EOF", ErrUnexpectedEOL)
+
+func wrapEOF(err error, msg string, args ...interface{}) error {
+	if err != io.EOF {
+		return err
+	}
+	if msg == "" {
+		return errUnexpectedEOF
+	}
+	switch len(args) {
+	case 0:
+		return fmt.Errorf("%w: expected "+msg+", got EOF", ErrUnexpectedEOL)
+	case 1:
+		return fmt.Errorf("%w: expected "+msg+", got EOF", ErrUnexpectedEOL, args[0])
+	default:
+		return fmt.Errorf("%w: expected "+msg+", got EOF", append([]interface{}{ErrUnexpectedEOL}, args...)...)
+	}
+}
+
 func (rr *Reader) expect(t Type) error {
 	g, err := rr.Peek()
 	if err != nil {
-		if err == io.EOF {
-			err = ErrUnexpectedEOL
-		}
-		return err
+		return wrapEOF(err, "value of type %q", t)
 	}
 	if g != t {
-		return ErrUnexpectedType
+		return fmt.Errorf("%w: expected %q, got %q", ErrUnexpectedType, t, g)
 	}
 	_, err = rr.br.Discard(1)
 	return err
@@ -72,13 +90,10 @@ func (rr *Reader) expect(t Type) error {
 func (rr *Reader) readEOL() error {
 	b, err := rr.br.Peek(len("\r\n"))
 	if err != nil {
-		if err == io.EOF {
-			err = ErrUnexpectedEOL
-		}
-		return err
+		return wrapEOF(err, "\\r\\n", nil)
 	}
 	if len(b) != 2 || b[0] != '\r' || b[1] != '\n' {
-		return ErrUnexpectedEOL
+		return fmt.Errorf("%w: expected \\r\\n, got %q", ErrUnexpectedEOL, string(b))
 	}
 	_, err = rr.br.Discard(len(b))
 	return err
@@ -90,11 +105,11 @@ func (rr *Reader) readDouble() (float64, error) {
 		return 0, err
 	}
 	if len(b) == 0 {
-		return 0, ErrUnexpectedEOL
+		return 0, fmt.Errorf("%w: missing value", ErrUnexpectedEOL)
 	}
 	f, err := strconv.ParseFloat(string(b), 64)
 	if err != nil {
-		return 0, ErrInvalidDouble
+		return 0, fmt.Errorf("%w: %s", ErrInvalidDouble, string(b))
 	}
 	return f, nil
 }
@@ -108,10 +123,7 @@ loop:
 	for i = 0; ; i++ {
 		b, err := rr.br.ReadByte()
 		if err != nil {
-			if err == io.EOF {
-				err = ErrUnexpectedEOL
-			}
-			return 0, err
+			return 0, wrapEOF(err, "number", nil)
 		}
 
 		switch {
@@ -125,18 +137,15 @@ loop:
 			break loop
 		default:
 			_ = rr.br.UnreadByte()
-			return 0, ErrInvalidNumber
+			return 0, fmt.Errorf("%w: invalid character %c", ErrInvalidNumber, b)
 		}
 	}
 
 	if err := rr.readEOL(); err != nil {
 		return 0, err
 	}
-	if i == 1 && neg {
-		return 0, ErrInvalidNumber
-	}
-	if i < 1 || (neg && i < 2) {
-		return 0, ErrUnexpectedEOL
+	if i < 1 || (i == 1 && neg) {
+		return 0, fmt.Errorf("%w: expected number, got empty value", ErrUnexpectedEOL)
 	}
 
 	if neg {
@@ -169,7 +178,7 @@ func (rr *Reader) readBlob(t Type, dst []byte) ([]byte, error) {
 		return nil, err
 	}
 	if n < 0 {
-		return nil, ErrInvalidBlobLength
+		return nil, fmt.Errorf("%w: got length %d", ErrInvalidBlobLength, n)
 	}
 	b, err := rr.readBlobBody(dst, int(n))
 	return b, err
@@ -182,9 +191,9 @@ func (rr *Reader) readBlobBody(dst []byte, n int) ([]byte, error) {
 		line, err := rr.br.Peek(n)
 		if err != nil && err != bufio.ErrBufferFull {
 			if err == io.EOF {
-				err = ErrUnexpectedEOL
+				err = fmt.Errorf("%w: expected %d more bytes, got EOF", ErrUnexpectedEOL, n)
 			}
-			return nil, err
+			return nil, wrapEOF(err, "%d more bytes", n)
 		}
 		dst = append(dst, line...)
 		n -= len(line)
@@ -199,10 +208,7 @@ func (rr *Reader) readLine(dst []byte) ([]byte, error) {
 	for {
 		line, err := rr.br.ReadSlice('\n')
 		if err != nil && err != bufio.ErrBufferFull {
-			if err == io.EOF {
-				err = ErrUnexpectedEOL
-			}
-			return nil, err
+			return nil, wrapEOF(err, "")
 		}
 		dst = append(dst, line...)
 		if line[len(line)-1] == '\n' {
@@ -250,7 +256,7 @@ func (rr *Reader) readAggregateHeader(t Type) (int64, bool, error) {
 		return 0, false, err
 	}
 	n, err := rr.readNumber()
-	if n < 0 || err == ErrInvalidNumber {
+	if n < 0 || errors.Is(err, ErrInvalidNumber) {
 		n, err = 0, ErrInvalidAggregateTypeLength
 	}
 	return n, false, err
@@ -284,10 +290,10 @@ func (rr *Reader) ReadBigNumber(n *big.Int) error {
 		return err
 	}
 	if len(b) == 0 {
-		return ErrUnexpectedEOL
+		return fmt.Errorf("%w: missing value", ErrUnexpectedEOL)
 	}
 	if _, ok := n.SetString(string(b), 10); !ok {
-		return ErrInvalidBigNumber
+		return fmt.Errorf("%w: %s", ErrInvalidBigNumber, string(b))
 	}
 	return nil
 }
@@ -302,10 +308,7 @@ func (rr *Reader) ReadBlobChunk(b []byte) (bb []byte, last bool, err error) {
 	}
 	p, err := rr.br.Peek(len(";0\r\n"))
 	if err != nil {
-		if err == io.EOF {
-			err = ErrUnexpectedEOL
-		}
-		return nil, false, err
+		return nil, false, wrapEOF(err, "")
 	}
 	if p[1] == '0' && p[2] == '\r' && p[3] == '\n' {
 		if _, err := rr.br.Discard(len(p)); err != nil {
@@ -340,18 +343,15 @@ func (rr *Reader) ReadBoolean() (bool, error) {
 	}
 	p, err := rr.br.Peek(len("t\r\n"))
 	if err != nil {
-		if err == io.EOF {
-			err = ErrUnexpectedEOL
-		}
-		return false, err
+		return false, wrapEOF(err, "")
 	}
 	if p[0] != 't' && p[0] != 'f' {
-		return false, ErrInvalidBoolean
+		return false, fmt.Errorf("%w: expected f or t, got %c", ErrInvalidBoolean, p[1])
 	}
 	// read here, since the call to discard may invalidate p
 	b := p[0] == 't'
 	if p[1] != '\r' || p[2] != '\n' {
-		return false, ErrUnexpectedEOL
+		return false, fmt.Errorf("%w: expected \\r\\n, got %q", ErrUnexpectedEOL, string(p[1:]))
 	}
 	if _, err := rr.br.Discard(len(p)); err != nil {
 		return false, err
@@ -446,7 +446,11 @@ func (rr *Reader) ReadVerbatimString(b []byte) ([]byte, error) {
 		return nil, err
 	}
 	if len(b) < verbatimPrefixLength+1 || b[verbatimPrefixLength] != ':' {
-		return nil, ErrInvalidVerbatimStringPrefix
+		p := b
+		if n := verbatimPrefixLength*verbatimPrefixLength + 1; len(p) >= n {
+			p = p[:n]
+		}
+		return nil, fmt.Errorf("%w: %q", ErrInvalidVerbatimStringPrefix, string(p))
 	}
 	return b, nil
 }

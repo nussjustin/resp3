@@ -138,7 +138,7 @@ func discardStream(tb testing.TB, rr *resp3.Reader) {
 	tb.Helper()
 	for {
 		t, err := rr.Peek()
-		assertError(tb, err, nil)
+		assertError(tb, nil, err)
 		if t == resp3.TypeEnd {
 			break
 		}
@@ -187,19 +187,19 @@ func withRedisConn(tb testing.TB, f func(io.ReadWriteCloser, *resp3.ReadWriter))
 	}
 	rrw := resp3.NewReadWriter(rw)
 
-	assertError(tb, rrw.WriteArrayHeader(2), nil)
-	assertError(tb, rrw.WriteBlobString([]byte("HELLO")), nil)
-	assertError(tb, rrw.WriteBlobString([]byte("3")), nil)
+	assertError(tb, nil, rrw.WriteArrayHeader(2))
+	assertError(tb, nil, rrw.WriteBlobString([]byte("HELLO")))
+	assertError(tb, nil, rrw.WriteBlobString([]byte("3")))
 
 	discard(tb, &rrw.Reader)
 
-	assertError(tb, rrw.WriteArrayHeader(2), nil)
-	assertError(tb, rrw.WriteBlobString([]byte("FLUSHDB")), nil)
-	assertError(tb, rrw.WriteBlobString([]byte("ASYNC")), nil)
+	assertError(tb, nil, rrw.WriteArrayHeader(2))
+	assertError(tb, nil, rrw.WriteBlobString([]byte("FLUSHDB")))
+	assertError(tb, nil, rrw.WriteBlobString([]byte("ASYNC")))
 
 	res, err := rrw.ReadSimpleString(nil)
-	assertError(tb, err, nil)
-	assertBytes(tb, res, "OK")
+	assertError(tb, nil, err)
+	assertBytes(tb, "OK", res)
 
 	f(conn, rrw)
 }

@@ -2,6 +2,7 @@ package resp3_test
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -12,6 +13,13 @@ import (
 
 	"github.com/nussjustin/resp3"
 )
+
+func assertError(tb testing.TB, expected, actual error) {
+	tb.Helper()
+	if !errors.Is(actual, expected) {
+		tb.Errorf("got error %q, expected error %q", actual, expected)
+	}
+}
 
 func makeCopyAggregateFunc(name string,
 	readHeader func(*resp3.Reader) (int64, bool, error),

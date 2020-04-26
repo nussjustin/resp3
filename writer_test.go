@@ -10,11 +10,11 @@ import (
 	"github.com/nussjustin/resp3"
 )
 
-func assertBytes(tb testing.TB, got []byte, expected string) {
+func assertBytes(tb testing.TB, expected string, actual []byte) {
 	tb.Helper()
 
-	if gotstr := string(got); gotstr != expected {
-		tb.Errorf("read failed. got %q, expected %q", gotstr, expected)
+	if actualStr := string(actual); actualStr != expected {
+		tb.Errorf("read failed. got %q, expected %q", actualStr, expected)
 	}
 }
 
@@ -35,7 +35,7 @@ func TestWriterReset(t *testing.T) {
 
 	mustWrite(t, bw1, []byte("hello"))
 	_ = bw1.Flush()
-	assertBytes(t, b1.Bytes(), "hello")
+	assertBytes(t, "hello", b1.Bytes())
 
 	var b2 bytes.Buffer
 	bw2 := bufio.NewWriter(&b2)
@@ -44,17 +44,17 @@ func TestWriterReset(t *testing.T) {
 	mustWrite(t, bw2, []byte("world"))
 	_ = bw1.Flush()
 	_ = bw2.Flush()
-	assertBytes(t, b1.Bytes(), "hello")
-	assertBytes(t, b2.Bytes(), "world")
+	assertBytes(t, "hello", b1.Bytes())
+	assertBytes(t, "world", b2.Bytes())
 
 	var b3 bytes.Buffer
 	w.Reset(&b3)
 	mustWrite(t, &b3, []byte("!"))
 	_ = bw1.Flush()
 	_ = bw2.Flush()
-	assertBytes(t, b1.Bytes(), "hello")
-	assertBytes(t, b2.Bytes(), "world")
-	assertBytes(t, b3.Bytes(), "!")
+	assertBytes(t, "hello", b1.Bytes())
+	assertBytes(t, "world", b2.Bytes())
+	assertBytes(t, "!", b3.Bytes())
 }
 
 func TestWriterWrite(t *testing.T) {
@@ -89,20 +89,6 @@ func TestWriterWrite(t *testing.T) {
 	t.Run("VerbatimString", testWriteVerbatimString)
 }
 
-func assertError(tb testing.TB, got, expected error) {
-	tb.Helper()
-	switch {
-	case got == nil && expected != nil:
-		tb.Errorf("got nil error, expected error %q", expected)
-	case got != nil && expected == nil:
-		tb.Errorf("got error %q, expected nil error", got)
-	case got != nil && expected != nil:
-		if gotS, expectedS := got.Error(), expected.Error(); gotS != expectedS {
-			tb.Errorf("got error %q, expected error %q", gotS, expectedS)
-		}
-	}
-}
-
 func newTestWriter(t *testing.T) (rw *resp3.Writer, assert func(expected string, expectedError error, err error)) {
 	var b bytes.Buffer
 	return resp3.NewWriter(&b), func(expected string, expectedError error, err error) {
@@ -110,7 +96,7 @@ func newTestWriter(t *testing.T) (rw *resp3.Writer, assert func(expected string,
 		if got := b.String(); got != expected {
 			t.Errorf("got %q, expected %q", got, expected)
 		}
-		assertError(t, err, expectedError)
+		assertError(t, expectedError, err)
 		b.Reset()
 	}
 }
