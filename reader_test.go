@@ -89,8 +89,15 @@ func newTestReader() (rr *resp3.Reader, reset func(string)) {
 	}
 }
 
+func newTypePrefixFunc(ty resp3.Type) func(string) string {
+	return func(s string) string {
+		return string(ty) + s
+	}
+}
+
 func makeReadAggregationTest(ty resp3.Type, readHeader func(*resp3.Reader) (int64, bool, error)) func(*testing.T) {
 	return func(t *testing.T) {
+		p := newTypePrefixFunc(ty)
 		rr, reset := newTestReader()
 		for _, c := range []struct {
 			in      string
@@ -104,21 +111,21 @@ func makeReadAggregationTest(ty resp3.Type, readHeader func(*resp3.Reader) (int6
 			{string(resp3.TypeBlobString), 0, false, resp3.ErrUnexpectedType},
 			{string(resp3.TypeInvalid), 0, false, resp3.ErrInvalidType},
 
-			{string(ty) + "", 0, false, resp3.ErrUnexpectedEOL},
-			{string(ty) + "\n", 0, false, resp3.ErrUnexpectedEOL},
-			{string(ty) + "\n\r", 0, false, resp3.ErrUnexpectedEOL},
-			{string(ty) + "\r", 0, false, resp3.ErrUnexpectedEOL},
-			{string(ty) + "\r\n", 0, false, resp3.ErrUnexpectedEOL},
+			{p(""), 0, false, resp3.ErrUnexpectedEOL},
+			{p("\n"), 0, false, resp3.ErrUnexpectedEOL},
+			{p("\n\r"), 0, false, resp3.ErrUnexpectedEOL},
+			{p("\r"), 0, false, resp3.ErrUnexpectedEOL},
+			{p("\r\n"), 0, false, resp3.ErrUnexpectedEOL},
 
-			{string(ty) + "a\r\n", 0, false, resp3.ErrInvalidAggregateTypeLength},
-			{string(ty) + "-2\r\n", 0, false, resp3.ErrInvalidAggregateTypeLength},
-			{string(ty) + "-1\r\n", 0, false, resp3.ErrInvalidAggregateTypeLength},
+			{p("a\r\n"), 0, false, resp3.ErrInvalidAggregateTypeLength},
+			{p("-2\r\n"), 0, false, resp3.ErrInvalidAggregateTypeLength},
+			{p("-1\r\n"), 0, false, resp3.ErrInvalidAggregateTypeLength},
 
-			{string(ty) + "0\r\n", 0, false, nil},
-			{string(ty) + "1\r\n", 1, false, nil},
-			{string(ty) + "2\r\n", 2, false, nil},
+			{p("0\r\n"), 0, false, nil},
+			{p("1\r\n"), 1, false, nil},
+			{p("2\r\n"), 2, false, nil},
 
-			{string(ty) + "?\r\n", -1, true, nil},
+			{p("?\r\n"), -1, true, nil},
 		} {
 			reset(c.in)
 			n, chunked, err := readHeader(rr)
@@ -135,6 +142,7 @@ func makeReadAggregationTest(ty resp3.Type, readHeader func(*resp3.Reader) (int6
 
 func makeReadBlobTest(ty resp3.Type, readBlob func(*resp3.Reader, []byte) ([]byte, bool, error)) func(*testing.T) {
 	return func(t *testing.T) {
+		p := newTypePrefixFunc(ty)
 		rr, reset := newTestReader()
 		for _, c := range []struct {
 			in      string
@@ -148,34 +156,34 @@ func makeReadBlobTest(ty resp3.Type, readBlob func(*resp3.Reader, []byte) ([]byt
 			{string(resp3.TypeArray), "", false, resp3.ErrUnexpectedType},
 			{string(resp3.TypeInvalid), "", false, resp3.ErrInvalidType},
 
-			{string(ty), "", false, resp3.ErrUnexpectedEOL},
-			{string(ty) + "\n", "", false, resp3.ErrUnexpectedEOL},
-			{string(ty) + "\n\r", "", false, resp3.ErrUnexpectedEOL},
-			{string(ty) + "\r", "", false, resp3.ErrUnexpectedEOL},
-			{string(ty) + "\r\n", "", false, resp3.ErrUnexpectedEOL},
+			{p(""), "", false, resp3.ErrUnexpectedEOL},
+			{p("\n"), "", false, resp3.ErrUnexpectedEOL},
+			{p("\n\r"), "", false, resp3.ErrUnexpectedEOL},
+			{p("\r"), "", false, resp3.ErrUnexpectedEOL},
+			{p("\r\n"), "", false, resp3.ErrUnexpectedEOL},
 
-			{string(ty) + "-2\r\n", "", false, resp3.ErrInvalidBlobLength},
-			{string(ty) + "-1\r\n", "", false, resp3.ErrInvalidBlobLength},
+			{p("-2\r\n"), "", false, resp3.ErrInvalidBlobLength},
+			{p("-1\r\n"), "", false, resp3.ErrInvalidBlobLength},
 
-			{string(ty) + "\r\nhello\r\n", "", false, resp3.ErrUnexpectedEOL},
+			{p("\r\nhello\r\n"), "", false, resp3.ErrUnexpectedEOL},
 
-			{string(ty) + "0\r\n", "", false, resp3.ErrUnexpectedEOL},
+			{p("0\r\n"), "", false, resp3.ErrUnexpectedEOL},
 
-			{string(ty) + "5\r\nhello\r\n", "hello", false, nil},
+			{p("5\r\nhello\r\n"), "hello", false, nil},
 
-			{string(ty) + "5\r\nhello world\r\n", "", false, resp3.ErrUnexpectedEOL},
-			{string(ty) + "10\r\nhello\r\n", "", false, resp3.ErrUnexpectedEOL},
+			{p("5\r\nhello world\r\n"), "", false, resp3.ErrUnexpectedEOL},
+			{p("10\r\nhello\r\n"), "", false, resp3.ErrUnexpectedEOL},
 
-			{string(ty) + "5\r\nhello", "", false, resp3.ErrUnexpectedEOL},
-			{string(ty) + "5\r\nhello\n", "", false, resp3.ErrUnexpectedEOL},
-			{string(ty) + "5\r\nhello\n\r", "", false, resp3.ErrUnexpectedEOL},
-			{string(ty) + "5\r\nhello\r", "", false, resp3.ErrUnexpectedEOL},
-			{string(ty) + "5\r\nhello\r\r", "", false, resp3.ErrUnexpectedEOL},
+			{p("5\r\nhello"), "", false, resp3.ErrUnexpectedEOL},
+			{p("5\r\nhello\n"), "", false, resp3.ErrUnexpectedEOL},
+			{p("5\r\nhello\n\r"), "", false, resp3.ErrUnexpectedEOL},
+			{p("5\r\nhello\r"), "", false, resp3.ErrUnexpectedEOL},
+			{p("5\r\nhello\r\r"), "", false, resp3.ErrUnexpectedEOL},
 
-			{string(ty) + "11000\r\n" + strings.Repeat("hello world", 1000) + "\r\n",
+			{p("11000\r\n") + strings.Repeat("hello world", 1000) + "\r\n",
 				strings.Repeat("hello world", 1000), false, nil},
 
-			{string(ty) + "?\r\n", "", true, nil},
+			{p("?\r\n"), "", true, nil},
 		} {
 			reset(c.in)
 			buf, chunked, err := readBlob(rr, nil)
@@ -192,6 +200,7 @@ func makeReadBlobTest(ty resp3.Type, readBlob func(*resp3.Reader, []byte) ([]byt
 
 func makeReadEmptyTest(ty resp3.Type, readEmpty func(*resp3.Reader) error) func(*testing.T) {
 	return func(t *testing.T) {
+		p := newTypePrefixFunc(ty)
 		rr, reset := newTestReader()
 		for _, c := range []struct {
 			in  string
@@ -203,17 +212,17 @@ func makeReadEmptyTest(ty resp3.Type, readEmpty func(*resp3.Reader) error) func(
 			{string(resp3.TypeArray), resp3.ErrUnexpectedType},
 			{string(resp3.TypeInvalid), resp3.ErrInvalidType},
 
-			{string(ty), resp3.ErrUnexpectedEOL},
-			{string(ty) + "\n", resp3.ErrUnexpectedEOL},
-			{string(ty) + "\n\r", resp3.ErrUnexpectedEOL},
-			{string(ty) + "\r", resp3.ErrUnexpectedEOL},
-			{string(ty) + "\r\r", resp3.ErrUnexpectedEOL},
+			{p(""), resp3.ErrUnexpectedEOL},
+			{p("\n"), resp3.ErrUnexpectedEOL},
+			{p("\n\r"), resp3.ErrUnexpectedEOL},
+			{p("\r"), resp3.ErrUnexpectedEOL},
+			{p("\r\r"), resp3.ErrUnexpectedEOL},
 
-			{string(ty) + "\r\n", nil},
+			{p("\r\n"), nil},
 
-			{string(ty) + ".\r\n", resp3.ErrUnexpectedEOL},
-			{string(ty) + "#\r\n", resp3.ErrUnexpectedEOL},
-			{string(ty) + "A\r\n", resp3.ErrUnexpectedEOL},
+			{p(".\r\n"), resp3.ErrUnexpectedEOL},
+			{p("#\r\n"), resp3.ErrUnexpectedEOL},
+			{p("A\r\n"), resp3.ErrUnexpectedEOL},
 		} {
 			reset(c.in)
 			assertError(t, c.err, readEmpty(rr))
@@ -223,6 +232,7 @@ func makeReadEmptyTest(ty resp3.Type, readEmpty func(*resp3.Reader) error) func(
 
 func makeReadSimpleTest(ty resp3.Type, readSimple func(*resp3.Reader, []byte) ([]byte, error)) func(*testing.T) {
 	return func(t *testing.T) {
+		p := newTypePrefixFunc(ty)
 		rr, reset := newTestReader()
 		for _, c := range []struct {
 			in  string
@@ -235,15 +245,15 @@ func makeReadSimpleTest(ty resp3.Type, readSimple func(*resp3.Reader, []byte) ([
 			{string(resp3.TypeArray), "", resp3.ErrUnexpectedType},
 			{string(resp3.TypeInvalid), "", resp3.ErrInvalidType},
 
-			{string(ty), "", resp3.ErrUnexpectedEOL},
-			{string(ty) + "\n", "", resp3.ErrUnexpectedEOL},
-			{string(ty) + "\n\r", "", resp3.ErrUnexpectedEOL},
-			{string(ty) + "\r", "", resp3.ErrUnexpectedEOL},
-			{string(ty) + "\r\r", "", resp3.ErrUnexpectedEOL},
+			{p(""), "", resp3.ErrUnexpectedEOL},
+			{p("\n"), "", resp3.ErrUnexpectedEOL},
+			{p("\n\r"), "", resp3.ErrUnexpectedEOL},
+			{p("\r"), "", resp3.ErrUnexpectedEOL},
+			{p("\r\r"), "", resp3.ErrUnexpectedEOL},
 
-			{string(ty) + "\r\n", "", nil},
-			{string(ty) + "OK\r\n", "OK", nil},
-			{string(ty) + strings.Repeat("hello world", 1000) + "\r\n",
+			{p("\r\n"), "", nil},
+			{p("OK\r\n"), "OK", nil},
+			{p(strings.Repeat("hello world", 1000) + "\r\n"),
 				strings.Repeat("hello world", 1000), nil},
 		} {
 			reset(c.in)
@@ -261,6 +271,7 @@ func testReadBigNumber(t *testing.T) {
 		n, _ := new(big.Int).SetString(s, 10)
 		return n
 	}
+	p := newTypePrefixFunc(resp3.TypeBigNumber)
 	rr, reset := newTestReader()
 	for _, c := range []struct {
 		in  string
@@ -273,33 +284,33 @@ func testReadBigNumber(t *testing.T) {
 		{string(resp3.TypeArray), nil, resp3.ErrUnexpectedType},
 		{string(resp3.TypeInvalid), nil, resp3.ErrInvalidType},
 
-		{string(resp3.TypeBigNumber), nil, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBigNumber) + "\n", nil, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBigNumber) + "\n\r", nil, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBigNumber) + "\r", nil, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBigNumber) + "\r\n", nil, resp3.ErrUnexpectedEOL},
+		{p(""), nil, resp3.ErrUnexpectedEOL},
+		{p("\n"), nil, resp3.ErrUnexpectedEOL},
+		{p("\n\r"), nil, resp3.ErrUnexpectedEOL},
+		{p("\r"), nil, resp3.ErrUnexpectedEOL},
+		{p("\r\n"), nil, resp3.ErrUnexpectedEOL},
 
-		{string(resp3.TypeBigNumber) + "-10\r\n", big.NewInt(-10), nil},
-		{string(resp3.TypeBigNumber) + "-1\r\n", big.NewInt(-1), nil},
-		{string(resp3.TypeBigNumber) + "0\r\n", big.NewInt(0), nil},
-		{string(resp3.TypeBigNumber) + "1\r\n", big.NewInt(1), nil},
-		{string(resp3.TypeBigNumber) + "10\r\n", big.NewInt(10), nil},
-		{string(resp3.TypeBigNumber) + "-123456789123456789123456789123456789\r\n",
+		{p("-10\r\n"), big.NewInt(-10), nil},
+		{p("-1\r\n"), big.NewInt(-1), nil},
+		{p("0\r\n"), big.NewInt(0), nil},
+		{p("1\r\n"), big.NewInt(1), nil},
+		{p("10\r\n"), big.NewInt(10), nil},
+		{p("-123456789123456789123456789123456789\r\n"),
 			newBigInt("-123456789123456789123456789123456789"), nil},
-		{string(resp3.TypeBigNumber) + "123456789123456789123456789123456789\r\n",
+		{p("123456789123456789123456789123456789\r\n"),
 			newBigInt("123456789123456789123456789123456789"), nil},
-		{string(resp3.TypeBigNumber) + "+123456789123456789123456789123456789\r\n",
+		{p("+123456789123456789123456789123456789\r\n"),
 			newBigInt("123456789123456789123456789123456789"), nil},
-		{string(resp3.TypeBigNumber) + "+1\r\n", big.NewInt(1), nil},
+		{p("+1\r\n"), big.NewInt(1), nil},
 
-		{string(resp3.TypeBigNumber) + "A\r\n", nil, resp3.ErrInvalidBigNumber},
-		{string(resp3.TypeBigNumber) + "1a\r\n", nil, resp3.ErrInvalidBigNumber},
-		{string(resp3.TypeBigNumber) + "1.\r\n", nil, resp3.ErrInvalidBigNumber},
-		{string(resp3.TypeBigNumber) + "1.0\r\n", nil, resp3.ErrInvalidBigNumber},
-		{string(resp3.TypeBigNumber) + "1.01\r\n", nil, resp3.ErrInvalidBigNumber},
-		{string(resp3.TypeBigNumber) + "#\r\n", nil, resp3.ErrInvalidBigNumber},
-		{string(resp3.TypeBigNumber) + "-\r\n", nil, resp3.ErrInvalidBigNumber},
-		{string(resp3.TypeBigNumber) + "+\r\n", nil, resp3.ErrInvalidBigNumber},
+		{p("A\r\n"), nil, resp3.ErrInvalidBigNumber},
+		{p("1a\r\n"), nil, resp3.ErrInvalidBigNumber},
+		{p("1.\r\n"), nil, resp3.ErrInvalidBigNumber},
+		{p("1.0\r\n"), nil, resp3.ErrInvalidBigNumber},
+		{p("1.01\r\n"), nil, resp3.ErrInvalidBigNumber},
+		{p("#\r\n"), nil, resp3.ErrInvalidBigNumber},
+		{p("-\r\n"), nil, resp3.ErrInvalidBigNumber},
+		{p("+\r\n"), nil, resp3.ErrInvalidBigNumber},
 	} {
 		reset(c.in)
 		n := new(big.Int)
@@ -312,6 +323,7 @@ func testReadBigNumber(t *testing.T) {
 }
 
 func testReadBoolean(t *testing.T) {
+	p := newTypePrefixFunc(resp3.TypeBoolean)
 	rr, reset := newTestReader()
 	for _, c := range []struct {
 		in  string
@@ -324,28 +336,28 @@ func testReadBoolean(t *testing.T) {
 		{string(resp3.TypeArray), false, resp3.ErrUnexpectedType},
 		{string(resp3.TypeInvalid), false, resp3.ErrInvalidType},
 
-		{string(resp3.TypeBoolean), false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBoolean) + "\n", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBoolean) + "\n\r", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBoolean) + "\r", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBoolean) + "\r\r", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBoolean) + "f\n", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBoolean) + "f\n\r", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBoolean) + "f\r", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBoolean) + "f\r\r", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBoolean) + "t\n", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBoolean) + "t\n\r", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBoolean) + "t\r", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBoolean) + "t\r\r", false, resp3.ErrUnexpectedEOL},
+		{p(""), false, resp3.ErrUnexpectedEOL},
+		{p("\n"), false, resp3.ErrUnexpectedEOL},
+		{p("\n\r"), false, resp3.ErrUnexpectedEOL},
+		{p("\r"), false, resp3.ErrUnexpectedEOL},
+		{p("\r\r"), false, resp3.ErrUnexpectedEOL},
+		{p("f\n"), false, resp3.ErrUnexpectedEOL},
+		{p("f\n\r"), false, resp3.ErrUnexpectedEOL},
+		{p("f\r"), false, resp3.ErrUnexpectedEOL},
+		{p("f\r\r"), false, resp3.ErrUnexpectedEOL},
+		{p("t\n"), false, resp3.ErrUnexpectedEOL},
+		{p("t\n\r"), false, resp3.ErrUnexpectedEOL},
+		{p("t\r"), false, resp3.ErrUnexpectedEOL},
+		{p("t\r\r"), false, resp3.ErrUnexpectedEOL},
 
-		{string(resp3.TypeBoolean) + "f\r\n", false, nil},
-		{string(resp3.TypeBoolean) + "t\r\n", true, nil},
+		{p("f\r\n"), false, nil},
+		{p("t\r\n"), true, nil},
 
-		{string(resp3.TypeBoolean) + "#\r\n", false, resp3.ErrInvalidBoolean},
-		{string(resp3.TypeBoolean) + "A\r\n", false, resp3.ErrInvalidBoolean},
-		{string(resp3.TypeBoolean) + "F\r\n", false, resp3.ErrInvalidBoolean},
-		{string(resp3.TypeBoolean) + "T\r\n", false, resp3.ErrInvalidBoolean},
-		{string(resp3.TypeBoolean) + "Z\r\n", false, resp3.ErrInvalidBoolean},
+		{p("#\r\n"), false, resp3.ErrInvalidBoolean},
+		{p("A\r\n"), false, resp3.ErrInvalidBoolean},
+		{p("F\r\n"), false, resp3.ErrInvalidBoolean},
+		{p("T\r\n"), false, resp3.ErrInvalidBoolean},
+		{p("Z\r\n"), false, resp3.ErrInvalidBoolean},
 	} {
 		reset(c.in)
 		b, err := rr.ReadBoolean()
@@ -357,6 +369,7 @@ func testReadBoolean(t *testing.T) {
 }
 
 func testReadDouble(t *testing.T) {
+	p := newTypePrefixFunc(resp3.TypeDouble)
 	rr, reset := newTestReader()
 	for _, c := range []struct {
 		in  string
@@ -369,46 +382,46 @@ func testReadDouble(t *testing.T) {
 		{string(resp3.TypeArray), 0, resp3.ErrUnexpectedType},
 		{string(resp3.TypeInvalid), 0, resp3.ErrInvalidType},
 
-		{string(resp3.TypeDouble), 0, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeDouble) + "\n", 0, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeDouble) + "\n\r", 0, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeDouble) + "\r", 0, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeDouble) + "\r\n", 0, resp3.ErrUnexpectedEOL},
+		{p(""), 0, resp3.ErrUnexpectedEOL},
+		{p("\n"), 0, resp3.ErrUnexpectedEOL},
+		{p("\n\r"), 0, resp3.ErrUnexpectedEOL},
+		{p("\r"), 0, resp3.ErrUnexpectedEOL},
+		{p("\r\n"), 0, resp3.ErrUnexpectedEOL},
 
-		{string(resp3.TypeDouble) + "-1", 0, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeDouble) + "0", 0, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeDouble) + "1", 0, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeDouble) + "inf", 0, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeDouble) + "-inf", 0, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeDouble) + "+inf", 0, resp3.ErrUnexpectedEOL},
+		{p("-1"), 0, resp3.ErrUnexpectedEOL},
+		{p("0"), 0, resp3.ErrUnexpectedEOL},
+		{p("1"), 0, resp3.ErrUnexpectedEOL},
+		{p("inf"), 0, resp3.ErrUnexpectedEOL},
+		{p("-inf"), 0, resp3.ErrUnexpectedEOL},
+		{p("+inf"), 0, resp3.ErrUnexpectedEOL},
 
-		{string(resp3.TypeDouble) + "-1.2\r\n", -1.2, nil},
-		{string(resp3.TypeDouble) + "-1.0\r\n", -1, nil},
-		{string(resp3.TypeDouble) + "-1\r\n", -1, nil},
-		{string(resp3.TypeDouble) + "-0.01\r\n", -0.01, nil},
-		{string(resp3.TypeDouble) + "-0.1\r\n", -0.1, nil},
-		{string(resp3.TypeDouble) + "-0.0\r\n", 0, nil},
-		{string(resp3.TypeDouble) + "0\r\n", 0, nil},
-		{string(resp3.TypeDouble) + "0.0\r\n", 0, nil},
-		{string(resp3.TypeDouble) + "0.01\r\n", 0.01, nil},
-		{string(resp3.TypeDouble) + "0.1\r\n", 0.1, nil},
-		{string(resp3.TypeDouble) + "1\r\n", 1, nil},
-		{string(resp3.TypeDouble) + "1.0\r\n", 1, nil},
-		{string(resp3.TypeDouble) + "1.2\r\n", 1.2, nil},
+		{p("-1.2\r\n"), -1.2, nil},
+		{p("-1.0\r\n"), -1, nil},
+		{p("-1\r\n"), -1, nil},
+		{p("-0.01\r\n"), -0.01, nil},
+		{p("-0.1\r\n"), -0.1, nil},
+		{p("-0.0\r\n"), 0, nil},
+		{p("0\r\n"), 0, nil},
+		{p("0.0\r\n"), 0, nil},
+		{p("0.01\r\n"), 0.01, nil},
+		{p("0.1\r\n"), 0.1, nil},
+		{p("1\r\n"), 1, nil},
+		{p("1.0\r\n"), 1, nil},
+		{p("1.2\r\n"), 1.2, nil},
 
-		{string(resp3.TypeDouble) + "1.\r\n", 1, nil},
-		{string(resp3.TypeDouble) + "1.01\r\n", 1.01, nil},
-		{string(resp3.TypeDouble) + "+1\r\n", 1, nil},
+		{p("1.\r\n"), 1, nil},
+		{p("1.01\r\n"), 1.01, nil},
+		{p("+1\r\n"), 1, nil},
 
-		{string(resp3.TypeDouble) + "inf\r\n", math.Inf(1), nil},
-		{string(resp3.TypeDouble) + "+inf\r\n", math.Inf(1), nil}, // not specified, but handled by ParseFloat
-		{string(resp3.TypeDouble) + "-inf\r\n", math.Inf(-1), nil},
+		{p("inf\r\n"), math.Inf(1), nil},
+		{p("+inf\r\n"), math.Inf(1), nil}, // not specified, but handled by ParseFloat
+		{p("-inf\r\n"), math.Inf(-1), nil},
 
-		{string(resp3.TypeDouble) + "A\r\n", 0, resp3.ErrInvalidDouble},
-		{string(resp3.TypeDouble) + "1a\r\n", 0, resp3.ErrInvalidDouble},
-		{string(resp3.TypeDouble) + "#\r\n", 0, resp3.ErrInvalidDouble},
-		{string(resp3.TypeDouble) + "-\r\n", 0, resp3.ErrInvalidDouble},
-		{string(resp3.TypeDouble) + "+\r\n", 0, resp3.ErrInvalidDouble},
+		{p("A\r\n"), 0, resp3.ErrInvalidDouble},
+		{p("1a\r\n"), 0, resp3.ErrInvalidDouble},
+		{p("#\r\n"), 0, resp3.ErrInvalidDouble},
+		{p("-\r\n"), 0, resp3.ErrInvalidDouble},
+		{p("+\r\n"), 0, resp3.ErrInvalidDouble},
 	} {
 		reset(c.in)
 		f, err := rr.ReadDouble()
@@ -420,6 +433,7 @@ func testReadDouble(t *testing.T) {
 }
 
 func testReadBlobChunk(t *testing.T) {
+	p := newTypePrefixFunc(resp3.TypeBlobChunk)
 	rr, reset := newTestReader()
 	for _, c := range []struct {
 		in   string
@@ -433,31 +447,31 @@ func testReadBlobChunk(t *testing.T) {
 		{string(resp3.TypeArray), "", false, resp3.ErrUnexpectedType},
 		{string(resp3.TypeInvalid), "", false, resp3.ErrInvalidType},
 
-		{string(resp3.TypeBlobChunk), "", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "\n", "", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "\n\r", "", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "\r", "", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "\r\n", "", false, resp3.ErrUnexpectedEOL},
+		{p(""), "", false, resp3.ErrUnexpectedEOL},
+		{p("\n"), "", false, resp3.ErrUnexpectedEOL},
+		{p("\n\r"), "", false, resp3.ErrUnexpectedEOL},
+		{p("\r"), "", false, resp3.ErrUnexpectedEOL},
+		{p("\r\n"), "", false, resp3.ErrUnexpectedEOL},
 
-		{string(resp3.TypeBlobChunk) + "-2\r\n", "", false, resp3.ErrInvalidBlobLength},
-		{string(resp3.TypeBlobChunk) + "-1\r\n", "", false, resp3.ErrInvalidBlobLength},
+		{p("-2\r\n"), "", false, resp3.ErrInvalidBlobLength},
+		{p("-1\r\n"), "", false, resp3.ErrInvalidBlobLength},
 
-		{string(resp3.TypeBlobChunk) + "\r\nhello\r\n", "", false, resp3.ErrUnexpectedEOL},
+		{p("\r\nhello\r\n"), "", false, resp3.ErrUnexpectedEOL},
 
-		{string(resp3.TypeBlobChunk) + "0\r\n", "", true, nil},
+		{p("0\r\n"), "", true, nil},
 
-		{string(resp3.TypeBlobChunk) + "5\r\nhello\r\n", "hello", false, nil},
+		{p("5\r\nhello\r\n"), "hello", false, nil},
 
-		{string(resp3.TypeBlobChunk) + "5\r\nhello world\r\n", "", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "10\r\nhello\r\n", "", false, resp3.ErrUnexpectedEOL},
+		{p("5\r\nhello world\r\n"), "", false, resp3.ErrUnexpectedEOL},
+		{p("10\r\nhello\r\n"), "", false, resp3.ErrUnexpectedEOL},
 
-		{string(resp3.TypeBlobChunk) + "5\r\nhello", "", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "5\r\nhello\n", "", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "5\r\nhello\n\r", "", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "5\r\nhello\r", "", false, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "5\r\nhello\r\r", "", false, resp3.ErrUnexpectedEOL},
+		{p("5\r\nhello"), "", false, resp3.ErrUnexpectedEOL},
+		{p("5\r\nhello\n"), "", false, resp3.ErrUnexpectedEOL},
+		{p("5\r\nhello\n\r"), "", false, resp3.ErrUnexpectedEOL},
+		{p("5\r\nhello\r"), "", false, resp3.ErrUnexpectedEOL},
+		{p("5\r\nhello\r\r"), "", false, resp3.ErrUnexpectedEOL},
 
-		{string(resp3.TypeBlobChunk) + "11000\r\n" + strings.Repeat("hello world", 1000) + "\r\n",
+		{p("11000\r\n" + strings.Repeat("hello world", 1000) + "\r\n"),
 			strings.Repeat("hello world", 1000), false, nil},
 	} {
 		reset(c.in)
@@ -473,6 +487,7 @@ func testReadBlobChunk(t *testing.T) {
 }
 
 func testReadBlobChunks(t *testing.T) {
+	p := newTypePrefixFunc(resp3.TypeBlobChunk)
 	rr, reset := newTestReader()
 	for _, c := range []struct {
 		in  string
@@ -523,6 +538,7 @@ func testReadBlobChunks(t *testing.T) {
 }
 
 func testReadNumber(t *testing.T) {
+	p := newTypePrefixFunc(resp3.TypeNumber)
 	rr, reset := newTestReader()
 	for _, c := range []struct {
 		in  string
@@ -535,27 +551,27 @@ func testReadNumber(t *testing.T) {
 		{string(resp3.TypeArray), 0, resp3.ErrUnexpectedType},
 		{string(resp3.TypeInvalid), 0, resp3.ErrInvalidType},
 
-		{string(resp3.TypeNumber), 0, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeNumber) + "\n", 0, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeNumber) + "\n\r", 0, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeNumber) + "\r", 0, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeNumber) + "\r\n", 0, resp3.ErrUnexpectedEOL},
+		{p(""), 0, resp3.ErrUnexpectedEOL},
+		{p("\n"), 0, resp3.ErrUnexpectedEOL},
+		{p("\n\r"), 0, resp3.ErrUnexpectedEOL},
+		{p("\r"), 0, resp3.ErrUnexpectedEOL},
+		{p("\r\n"), 0, resp3.ErrUnexpectedEOL},
 
-		{string(resp3.TypeNumber) + "-10\r\n", -10, nil},
-		{string(resp3.TypeNumber) + "-1\r\n", -1, nil},
-		{string(resp3.TypeNumber) + "0\r\n", 0, nil},
-		{string(resp3.TypeNumber) + "1\r\n", 1, nil},
-		{string(resp3.TypeNumber) + "10\r\n", 10, nil},
+		{p("-10\r\n"), -10, nil},
+		{p("-1\r\n"), -1, nil},
+		{p("0\r\n"), 0, nil},
+		{p("1\r\n"), 1, nil},
+		{p("10\r\n"), 10, nil},
 
-		{string(resp3.TypeNumber) + "A\r\n", 0, resp3.ErrInvalidNumber},
-		{string(resp3.TypeNumber) + "1a\r\n", 0, resp3.ErrInvalidNumber},
-		{string(resp3.TypeNumber) + "1.\r\n", 0, resp3.ErrInvalidNumber},
-		{string(resp3.TypeNumber) + "1.0\r\n", 0, resp3.ErrInvalidNumber},
-		{string(resp3.TypeNumber) + "1.01\r\n", 0, resp3.ErrInvalidNumber},
-		{string(resp3.TypeNumber) + "#\r\n", 0, resp3.ErrInvalidNumber},
-		{string(resp3.TypeNumber) + "-\r\n", 0, resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeNumber) + "+\r\n", 0, resp3.ErrInvalidNumber},
-		{string(resp3.TypeNumber) + "+1\r\n", 0, resp3.ErrInvalidNumber},
+		{p("A\r\n"), 0, resp3.ErrInvalidNumber},
+		{p("1a\r\n"), 0, resp3.ErrInvalidNumber},
+		{p("1.\r\n"), 0, resp3.ErrInvalidNumber},
+		{p("1.0\r\n"), 0, resp3.ErrInvalidNumber},
+		{p("1.01\r\n"), 0, resp3.ErrInvalidNumber},
+		{p("#\r\n"), 0, resp3.ErrInvalidNumber},
+		{p("-\r\n"), 0, resp3.ErrUnexpectedEOL},
+		{p("+\r\n"), 0, resp3.ErrInvalidNumber},
+		{p("+1\r\n"), 0, resp3.ErrInvalidNumber},
 	} {
 		reset(c.in)
 		n, err := rr.ReadNumber()
@@ -567,6 +583,7 @@ func testReadNumber(t *testing.T) {
 }
 
 func testReadVerbatimString(t *testing.T) {
+	p := newTypePrefixFunc(resp3.TypeVerbatimString)
 	rr, reset := newTestReader()
 	for _, c := range []struct {
 		in  string
@@ -579,33 +596,33 @@ func testReadVerbatimString(t *testing.T) {
 		{string(resp3.TypeArray), "", resp3.ErrUnexpectedType},
 		{string(resp3.TypeInvalid), "", resp3.ErrInvalidType},
 
-		{string(resp3.TypeVerbatimString), "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeVerbatimString) + "\n", "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeVerbatimString) + "\n\r", "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeVerbatimString) + "\r", "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeVerbatimString) + "\r\n", "", resp3.ErrUnexpectedEOL},
+		{p(""), "", resp3.ErrUnexpectedEOL},
+		{p("\n"), "", resp3.ErrUnexpectedEOL},
+		{p("\n\r"), "", resp3.ErrUnexpectedEOL},
+		{p("\r"), "", resp3.ErrUnexpectedEOL},
+		{p("\r\n"), "", resp3.ErrUnexpectedEOL},
 
-		{string(resp3.TypeVerbatimString) + "\r\nfoo:\r\n", "", resp3.ErrUnexpectedEOL},
+		{p("\r\nfoo:\r\n"), "", resp3.ErrUnexpectedEOL},
 
-		{string(resp3.TypeVerbatimString) + "3\r\nbar\r\n", "", resp3.ErrInvalidVerbatimStringPrefix},
-		{string(resp3.TypeVerbatimString) + "4\r\n:bar\r\n", "", resp3.ErrInvalidVerbatimStringPrefix},
-		{string(resp3.TypeVerbatimString) + "5\r\nf:bar\r\n", "", resp3.ErrInvalidVerbatimStringPrefix},
-		{string(resp3.TypeVerbatimString) + "6\r\nfo:bar\r\n", "", resp3.ErrInvalidVerbatimStringPrefix},
-		{string(resp3.TypeVerbatimString) + "4\r\nfoo:\r\n", "foo:", nil},
-		{string(resp3.TypeVerbatimString) + "5\r\nfoo:b\r\n", "foo:b", nil},
-		{string(resp3.TypeVerbatimString) + "6\r\nfoo:ba\r\n", "foo:ba", nil},
-		{string(resp3.TypeVerbatimString) + "7\r\nfoo:bar\r\n", "foo:bar", nil},
+		{p("3\r\nbar\r\n"), "", resp3.ErrInvalidVerbatimStringPrefix},
+		{p("4\r\n:bar\r\n"), "", resp3.ErrInvalidVerbatimStringPrefix},
+		{p("5\r\nf:bar\r\n"), "", resp3.ErrInvalidVerbatimStringPrefix},
+		{p("6\r\nfo:bar\r\n"), "", resp3.ErrInvalidVerbatimStringPrefix},
+		{p("4\r\nfoo:\r\n"), "foo:", nil},
+		{p("5\r\nfoo:b\r\n"), "foo:b", nil},
+		{p("6\r\nfoo:ba\r\n"), "foo:ba", nil},
+		{p("7\r\nfoo:bar\r\n"), "foo:bar", nil},
 
-		{string(resp3.TypeVerbatimString) + "5\r\nfoo:hello world\r\n", "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeVerbatimString) + "10\r\nfoo:hello\r\n", "", resp3.ErrUnexpectedEOL},
+		{p("5\r\nfoo:hello world\r\n"), "", resp3.ErrUnexpectedEOL},
+		{p("10\r\nfoo:hello\r\n"), "", resp3.ErrUnexpectedEOL},
 
-		{string(resp3.TypeVerbatimString) + "7\r\nfoo:bar", "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeVerbatimString) + "7\r\nfoo:bar\n", "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeVerbatimString) + "7\r\nfoo:bar\n\r", "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeVerbatimString) + "7\r\nfoo:bar\r", "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeVerbatimString) + "7\r\nfoo:bar\r\r", "", resp3.ErrUnexpectedEOL},
+		{p("7\r\nfoo:bar"), "", resp3.ErrUnexpectedEOL},
+		{p("7\r\nfoo:bar\n"), "", resp3.ErrUnexpectedEOL},
+		{p("7\r\nfoo:bar\n\r"), "", resp3.ErrUnexpectedEOL},
+		{p("7\r\nfoo:bar\r"), "", resp3.ErrUnexpectedEOL},
+		{p("7\r\nfoo:bar\r\r"), "", resp3.ErrUnexpectedEOL},
 
-		{string(resp3.TypeVerbatimString) + "11004\r\nfoo:" + strings.Repeat("hello world", 1000) + "\r\n",
+		{p("11004\r\nfoo:" + strings.Repeat("hello world", 1000) + "\r\n"),
 			"foo:" + strings.Repeat("hello world", 1000), nil},
 	} {
 		reset(c.in)
