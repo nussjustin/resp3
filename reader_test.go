@@ -788,7 +788,8 @@ func benchmarkReadBlobChunks(b *testing.B) {
 		string(resp3.TypeBlobChunk) + "5\r\nworld\r\n" +
 		string(resp3.TypeBlobChunk) + "10\r\nwhat's up?\r\n" +
 		string(resp3.TypeBlobChunk) + "1\r\n \r\n" +
-		string(resp3.TypeBlobChunk) + "8\r\nkthxbye!\r\n"
+		string(resp3.TypeBlobChunk) + "8\r\nkthxbye!\r\n" +
+		string(resp3.TypeBlobChunk) + "0\r\n"
 	rr, reset := newTestReader()
 	for i := 0; i < b.N; i++ {
 		reset(in)
