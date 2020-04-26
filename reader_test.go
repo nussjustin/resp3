@@ -485,41 +485,37 @@ func testReadBlobChunks(t *testing.T) {
 		{string(resp3.TypeArray), "", resp3.ErrUnexpectedType},
 		{string(resp3.TypeInvalid), "", resp3.ErrInvalidType},
 
-		{string(resp3.TypeBlobChunk), "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "\n", "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "\n\r", "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "\r", "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "\r\n", "", resp3.ErrUnexpectedEOL},
+		{p(""), "", resp3.ErrUnexpectedEOL},
+		{p("\n"), "", resp3.ErrUnexpectedEOL},
+		{p("\n\r"), "", resp3.ErrUnexpectedEOL},
+		{p("\r"), "", resp3.ErrUnexpectedEOL},
+		{p("\r\n"), "", resp3.ErrUnexpectedEOL},
 
-		{string(resp3.TypeBlobChunk) + "-2\r\n", "", resp3.ErrInvalidBlobLength},
-		{string(resp3.TypeBlobChunk) + "-1\r\n", "", resp3.ErrInvalidBlobLength},
+		{p("-2\r\n"), "", resp3.ErrInvalidBlobLength},
+		{p("-1\r\n"), "", resp3.ErrInvalidBlobLength},
 
-		{string(resp3.TypeBlobChunk) + "\r\nhello\r\n", "", resp3.ErrUnexpectedEOL},
+		{p("\r\nhello\r\n"), "", resp3.ErrUnexpectedEOL},
 
-		{string(resp3.TypeBlobChunk) + "0\r\n", "", nil},
+		{p("0\r\n"), "", nil},
 
-		{string(resp3.TypeBlobChunk) + "5\r\nhello\r\n", "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "5\r\nhello\r\n" + string(resp3.TypeBlobChunk) + "0\r\n", "hello", nil},
+		{p("5\r\nhello\r\n"), "", resp3.ErrUnexpectedEOL},
+		{p("5\r\nhello\r\n") + p("0\r\n"), "hello", nil},
 
-		{string(resp3.TypeBlobChunk) + "5\r\nhello world\r\n", "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "10\r\nhello\r\n", "", resp3.ErrUnexpectedEOL},
+		{p("5\r\nhello world\r\n"), "", resp3.ErrUnexpectedEOL},
+		{p("10\r\nhello\r\n"), "", resp3.ErrUnexpectedEOL},
 
-		{string(resp3.TypeBlobChunk) + "5\r\nhello", "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "5\r\nhello\n", "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "5\r\nhello\n\r", "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "5\r\nhello\r", "", resp3.ErrUnexpectedEOL},
-		{string(resp3.TypeBlobChunk) + "5\r\nhello\r\r", "", resp3.ErrUnexpectedEOL},
+		{p("5\r\nhello"), "", resp3.ErrUnexpectedEOL},
+		{p("5\r\nhello\n"), "", resp3.ErrUnexpectedEOL},
+		{p("5\r\nhello\n\r"), "", resp3.ErrUnexpectedEOL},
+		{p("5\r\nhello\r"), "", resp3.ErrUnexpectedEOL},
+		{p("5\r\nhello\r\r"), "", resp3.ErrUnexpectedEOL},
 
-		{string(resp3.TypeBlobChunk) + "11000\r\n" + strings.Repeat("hello world", 1000) +
-			"\r\n" + string(resp3.TypeBlobChunk) + "0\r\n", strings.Repeat("hello world", 1000), nil},
+		{p("11000\r\n"+strings.Repeat("hello world", 1000)+"\r\n") + p("0\r\n"),
+			strings.Repeat("hello world", 1000), nil},
 	} {
 		reset(c.in)
 		buf, err := rr.ReadBlobChunks(nil)
 		assertError(t, c.err, err)
-		if t.Failed() {
-			t.Logf("input: %q", c.in)
-			t.FailNow()
-		}
 		if got := string(buf); got != c.s {
 			t.Errorf("got %q, expected %q", got, c.s)
 		}
