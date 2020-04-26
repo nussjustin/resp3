@@ -185,7 +185,6 @@ func (rr *Reader) readBlob(t Type, dst []byte) ([]byte, error) {
 }
 
 func (rr *Reader) readBlobBody(dst []byte, n int) ([]byte, error) {
-	n += len("\r\n")
 	dst = ensureSpace(dst, n)
 	for n > 0 {
 		line, err := rr.br.Peek(n)
@@ -198,7 +197,10 @@ func (rr *Reader) readBlobBody(dst []byte, n int) ([]byte, error) {
 			return nil, err
 		}
 	}
-	return removeEOLMarker(dst)
+	if err := rr.readEOL(); err != nil {
+		return nil, err
+	}
+	return dst, nil
 }
 
 func (rr *Reader) readLine(dst []byte) ([]byte, error) {
