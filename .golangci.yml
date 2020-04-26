@@ -1,6 +1,8 @@
 run:
   build-tags:
   - integration
+  skip-files:
+    - _test.go$
 linters:
   enable-all: true
   disable:
