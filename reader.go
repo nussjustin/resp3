@@ -190,9 +190,6 @@ func (rr *Reader) readBlobBody(dst []byte, n int) ([]byte, error) {
 	for n > 0 {
 		line, err := rr.br.Peek(n)
 		if err != nil && err != bufio.ErrBufferFull {
-			if err == io.EOF {
-				err = fmt.Errorf("%w: expected %d more bytes, got EOF", ErrUnexpectedEOL, n)
-			}
 			return nil, wrapEOF(err, "%d more bytes", n)
 		}
 		dst = append(dst, line...)
