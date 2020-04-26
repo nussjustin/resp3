@@ -12,6 +12,16 @@ import (
 	"github.com/nussjustin/resp3"
 )
 
+func assertReadResultEqual(tb testing.TB, expected, actual []byte, expectedErr, actualErr error) {
+	tb.Helper()
+	assertError(tb, expectedErr, actualErr)
+	if expectedErr == nil && actualErr == nil {
+		assertBytesEqual(tb, expected, actual)
+	} else {
+		assertBytesEqual(tb, nil, actual)
+	}
+}
+
 func TestReaderReset(t *testing.T) {
 	rr := resp3.NewReader(strings.NewReader(""))
 	assertError(t, resp3.ErrUnexpectedEOL, rr.ReadEnd())
@@ -212,16 +222,17 @@ func runBlobReadTest(t *testing.T, ty resp3.Type, readBlob func(*resp3.Reader, [
 			err:   resp3.ErrSingleReadSizeLimitExceeded,
 		},
 	} {
-		rr.SingleReadSizeLimit = c.limit
-		reset(c.in)
-		buf, chunked, err := readBlob(rr, nil)
-		assertError(t, c.err, err)
-		if got := string(buf); got != c.s {
-			t.Errorf("got %q, expected %q", got, c.s)
+		withBuf := func(base []byte) {
+			rr.SingleReadSizeLimit = c.limit
+			reset(c.in)
+			buf, chunked, err := readBlob(rr, base)
+			assertReadResultEqual(t, append(base, c.s...), buf, c.err, err)
+			if chunked {
+				t.Errorf("got chunked=%v, expected chunked=%v", chunked, false)
+			}
 		}
-		if chunked {
-			t.Errorf("got chunked=%v, expected chunked=%v", chunked, false)
-		}
+		withBuf(nil)
+		withBuf([]byte("existing data"))
 	}
 }
 
@@ -343,13 +354,14 @@ func runSimpleReadTest(t *testing.T, ty resp3.Type, readSimple func(*resp3.Reade
 			err:   resp3.ErrSingleReadSizeLimitExceeded,
 		},
 	} {
-		rr.SingleReadSizeLimit = c.limit
-		reset(c.in)
-		buf, err := readSimple(rr, nil)
-		assertError(t, c.err, err)
-		if got := string(buf); got != c.s {
-			t.Errorf("got %q, expected %q", got, c.s)
+		withBuf := func(base []byte) {
+			rr.SingleReadSizeLimit = c.limit
+			reset(c.in)
+			buf, err := readSimple(rr, base)
+			assertReadResultEqual(t, append(base, c.s...), buf, c.err, err)
 		}
+		withBuf(nil)
+		withBuf([]byte("existing data"))
 	}
 }
 
@@ -585,15 +597,18 @@ func testReadBlobChunks(t *testing.T) {
 		{in: p("5\r\nhello\r"), err: resp3.ErrUnexpectedEOL},
 		{in: p("5\r\nhello\r\r"), err: resp3.ErrUnexpectedEOL},
 
-		{in: p("11000\r\n"+strings.Repeat("hello world", 1000)+"\r\n") + p("0\r\n"),
-			s: strings.Repeat("hello world", 1000)},
+		{
+			in: p("11000\r\n"+strings.Repeat("hello world", 1000)+"\r\n") + p("0\r\n"),
+			s:  strings.Repeat("hello world", 1000),
+		},
 	} {
-		reset(c.in)
-		buf, err := rr.ReadBlobChunks(nil)
-		assertError(t, c.err, err)
-		if got := string(buf); got != c.s {
-			t.Errorf("got %q, expected %q", got, c.s)
+		withBuf := func(base []byte) {
+			reset(c.in)
+			buf, err := rr.ReadBlobChunks(base)
+			assertReadResultEqual(t, append(base, c.s...), buf, c.err, err)
 		}
+		withBuf(nil)
+		withBuf([]byte("existing data"))
 	}
 }
 
@@ -755,13 +770,14 @@ func testReadVerbatimString(t *testing.T) {
 			err:   resp3.ErrSingleReadSizeLimitExceeded,
 		},
 	} {
-		rr.SingleReadSizeLimit = c.limit
-		reset(c.in)
-		buf, err := rr.ReadVerbatimString(nil)
-		assertError(t, c.err, err)
-		if got := string(buf); got != c.s {
-			t.Errorf("got %q, expected %q", got, c.s)
+		withBuf := func(base []byte) {
+			rr.SingleReadSizeLimit = c.limit
+			reset(c.in)
+			buf, err := rr.ReadVerbatimString(base)
+			assertReadResultEqual(t, append(base, c.s...), buf, c.err, err)
 		}
+		withBuf(nil)
+		withBuf([]byte("existing data"))
 	}
 }
 

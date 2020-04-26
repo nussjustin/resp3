@@ -9,10 +9,24 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/nussjustin/resp3"
 )
+
+func assertBytesEqual(tb testing.TB, expected, actual []byte) {
+	tb.Helper()
+	if !bytes.Equal(expected, actual) {
+		if len(expected) > 64 {
+			expected = append(expected[:64], "... "+strconv.Itoa(len(expected)-64)+" more characters"...)
+		}
+		if len(actual) > 64 {
+			actual = append(actual[:64], "... "+strconv.Itoa(len(actual)-64)+" more characters"...)
+		}
+		tb.Errorf("got %q, expected %q", expected, actual)
+	}
+}
 
 func assertError(tb testing.TB, expected, actual error) {
 	tb.Helper()
