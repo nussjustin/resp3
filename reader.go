@@ -2,6 +2,7 @@ package resp3
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -76,6 +77,15 @@ func wrapEOF(err error, msg string, args ...interface{}) error {
 	}
 }
 
+func (rr *Reader) consume(b []byte) bool {
+	g, err := rr.br.Peek(len(b))
+	if err != nil || !bytes.Equal(g, b) {
+		return false
+	}
+	_, _ = rr.br.Discard(len(b))
+	return true
+}
+
 func (rr *Reader) expect(t Type) error {
 	g, err := rr.Peek()
 	if err != nil {
@@ -91,7 +101,7 @@ func (rr *Reader) expect(t Type) error {
 func (rr *Reader) readEOL() error {
 	b, err := rr.br.Peek(len("\r\n"))
 	if err != nil {
-		return wrapEOF(err, "\\r\\n", nil)
+		return wrapEOF(err, "\\r\\n")
 	}
 	if len(b) != 2 || b[0] != '\r' || b[1] != '\n' {
 		return fmt.Errorf("%w: expected \\r\\n, got %q", ErrUnexpectedEOL, string(b))
@@ -125,7 +135,7 @@ loop:
 	for i = 0; ; i++ {
 		b, err := rr.br.ReadByte()
 		if err != nil {
-			return 0, wrapEOF(err, "number", nil)
+			return 0, wrapEOF(err, "number")
 		}
 
 		switch {
@@ -157,14 +167,7 @@ loop:
 }
 
 func (rr *Reader) readChunkableBlob(t Type, dst []byte) ([]byte, bool, error) {
-	if b, err := rr.br.Peek(len("$?\r\n")); err == nil &&
-		b[0] == byte(t) &&
-		b[1] == '?' &&
-		b[2] == '\r' &&
-		b[3] == '\n' {
-		if _, err := rr.br.Discard(len(b)); err != nil {
-			return nil, false, err
-		}
+	if rr.consume([]byte{byte(t), '?', '\r', '\n'}) {
 		return dst, true, nil
 	}
 	b, err := rr.readBlob(t, dst)
@@ -243,14 +246,7 @@ func removeEOLMarker(b []byte) ([]byte, error) {
 }
 
 func (rr *Reader) readAggregateHeader(t Type) (int64, bool, error) {
-	if b, err := rr.br.Peek(len("*?\r\n")); err == nil &&
-		b[0] == byte(t) &&
-		b[1] == '?' &&
-		b[2] == '\r' &&
-		b[3] == '\n' {
-		if _, err := rr.br.Discard(len(b)); err != nil {
-			return -1, false, err
-		}
+	if rr.consume([]byte{byte(t), '?', '\r', '\n'}) {
 		return -1, true, nil
 	}
 	if err := rr.expect(t); err != nil {
@@ -305,16 +301,7 @@ func (rr *Reader) ReadBigNumber(n *big.Int) error {
 //
 // If the next type in the response is not blob chunk, ErrUnexpectedType is returned.
 func (rr *Reader) ReadBlobChunk(b []byte) (bb []byte, last bool, err error) {
-	if p, err := rr.br.Peek(len(";0\r\n")); err != nil && err != io.EOF {
-		return nil, false, wrapEOF(err, "")
-	} else if err == nil &&
-		p[0] == byte(TypeBlobChunk) &&
-		p[1] == '0' &&
-		p[2] == '\r' &&
-		p[3] == '\n' {
-		if _, err := rr.br.Discard(len(p)); err != nil {
-			return nil, false, err
-		}
+	if rr.consume([]byte{byte(TypeBlobChunk), '0', '\r', '\n'}) {
 		return b, true, nil
 	}
 	b, err = rr.readBlob(TypeBlobChunk, b)
