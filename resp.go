@@ -86,7 +86,7 @@ const (
 
 var _ fmt.Stringer = TypeInvalid
 
-var types = [255]Type{
+var types = [256]Type{
 	TypeArray:          TypeArray,
 	TypeAttribute:      TypeAttribute,
 	TypeBigNumber:      TypeBigNumber,
