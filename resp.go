@@ -28,6 +28,9 @@ var (
 	// ErrInvalidSimpleValue is returned when decoding or encoding a simple error/string that contains either \r or \n.
 	ErrInvalidSimpleValue = errors.New("simple errors/strings must not contain \r or \n or both")
 
+	// ErrInvalidType is returned when decoding an unknown type.
+	ErrInvalidType = errors.New("invalid type")
+
 	// ErrInvalidVerbatimStringPrefix is returned when decoding or encoding a verbatim string prefix that has more or
 	// less than 3 characters.
 	ErrInvalidVerbatimStringPrefix = errors.New("invalid verbatim string prefix")

@@ -53,7 +53,10 @@ func (rr *Reader) Peek() (Type, error) {
 	if err != nil {
 		return TypeInvalid, err
 	}
-	return types[b[0]], nil
+	if t := types[b[0]]; t != TypeInvalid {
+		return t, nil
+	}
+	return TypeInvalid, fmt.Errorf("%w: %s", ErrInvalidType, b)
 }
 
 var errUnexpectedEOF = fmt.Errorf("%w: EOF", ErrUnexpectedEOL)
@@ -297,19 +300,18 @@ func (rr *Reader) ReadBigNumber(n *big.Int) error {
 	return nil
 }
 
-// ReadBlobChunk reads a blob string into b, returning the resulting slice and a boolean indicating
-// whether this was the ending chunk.
+// ReadBlobChunk reads a blob chunk into b, returning the resulting slice and a boolean indicating
+// whether this was the last chunk.
 //
 // If the next type in the response is not blob chunk, ErrUnexpectedType is returned.
 func (rr *Reader) ReadBlobChunk(b []byte) (bb []byte, last bool, err error) {
-	if t, err := rr.Peek(); err == nil && t != TypeBlobChunk {
-		return nil, false, ErrUnexpectedType
-	}
-	p, err := rr.br.Peek(len(";0\r\n"))
-	if err != nil {
+	if p, err := rr.br.Peek(len(";0\r\n")); err != nil && err != io.EOF {
 		return nil, false, wrapEOF(err, "")
-	}
-	if p[1] == '0' && p[2] == '\r' && p[3] == '\n' {
+	} else if err == nil &&
+		p[0] == byte(TypeBlobChunk) &&
+		p[1] == '0' &&
+		p[2] == '\r' &&
+		p[3] == '\n' {
 		if _, err := rr.br.Discard(len(p)); err != nil {
 			return nil, false, err
 		}
@@ -317,6 +319,22 @@ func (rr *Reader) ReadBlobChunk(b []byte) (bb []byte, last bool, err error) {
 	}
 	b, err = rr.readBlob(TypeBlobChunk, b)
 	return b, false, err
+}
+
+// ReadBlobChunks reads one or more blob chunks into b until the end of the blob,  appending
+// all chunks to b and returning the resulting slice.
+//
+// If the next type in the response is not blob chunk, ErrUnexpectedType is returned.
+func (rr *Reader) ReadBlobChunks(b []byte) ([]byte, error) {
+	for {
+		var last bool
+		var err error
+		if b, last, err = rr.ReadBlobChunk(b); err != nil {
+			return nil, err
+		} else if last {
+			return b, nil
+		}
+	}
 }
 
 // ReadBlobError reads a blob error into b, returning the resulting slice.
