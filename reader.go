@@ -16,8 +16,6 @@ type Reader struct {
 	// ownbr holds a *bufio.Reader that is reused when calling Reset. This is used in cases the io.Reader given to
 	// Reset is already a *bufio.Reader to avoid reusing the user given *bufio.Reader when calling Reset.
 	ownbr *bufio.Reader
-
-	buf [128]byte
 }
 
 // NewReader returns a *Reader that uses the given io.Reader for reads.
@@ -103,7 +101,8 @@ func (rr *Reader) readEOL() error {
 }
 
 func (rr *Reader) readDouble() (float64, error) {
-	b, err := rr.readLine(rr.buf[:0])
+	var buf [32]byte
+	b, err := rr.readLine(buf[:0])
 	if err != nil {
 		return 0, err
 	}
@@ -287,7 +286,8 @@ func (rr *Reader) ReadBigNumber(n *big.Int) error {
 	if err := rr.expect(TypeBigNumber); err != nil {
 		return err
 	}
-	b, err := rr.readLine(rr.buf[:0])
+	var buf [64]byte
+	b, err := rr.readLine(buf[:0])
 	if err != nil {
 		return err
 	}
