@@ -2,7 +2,6 @@ package resp3
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -91,9 +90,12 @@ func (rr *Reader) expect(t Type) error {
 }
 
 func (rr *Reader) match(b []byte) bool {
-	g, err := rr.br.Peek(len(b))
-	if err != nil || !bytes.Equal(g, b) {
-		return false
+	for i, c := range b {
+		// only read a byte at a time to avoid hangs when trying to read more bytes than are available
+		g, err := rr.br.Peek(i + 1)
+		if len(g) <= i || g[i] != c || err != nil {
+			return false
+		}
 	}
 	return true
 }
