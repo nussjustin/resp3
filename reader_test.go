@@ -820,7 +820,7 @@ func BenchmarkReaderRead(b *testing.B) {
 	b.Run("Null", benchmarkReadNull)
 	b.Run("Number", benchmarkReadNumber)
 	b.Run("Push", makeReadAggregationBenchmark(resp3.TypePush, (*resp3.Reader).ReadPushHeader))
-	b.Run("Set", makeReadAggregationBenchmark(resp3.TypeSimpleError, (*resp3.Reader).ReadSetHeader))
+	b.Run("Set", makeReadAggregationBenchmark(resp3.TypeSet, (*resp3.Reader).ReadSetHeader))
 	b.Run("SimpleError", makeReadSimpleBenchmark(resp3.TypeSimpleError, (*resp3.Reader).ReadSimpleError))
 	b.Run("SimpleString", makeReadSimpleBenchmark(resp3.TypeSimpleString, (*resp3.Reader).ReadSimpleString))
 	b.Run("VerbatimString", benchmarkReadVerbatimString)
