@@ -77,7 +77,7 @@ func (rw *Writer) writeSimple(t Type, s []byte) error {
 
 // WriteArrayHeader writes an array header for an array of length n.
 //
-// If n is < -1, ErrInvalidAggregateTypeLength is returned.
+// If n is < 0, ErrInvalidAggregateTypeLength is returned.
 func (rw *Writer) WriteArrayHeader(n int64) error {
 	return rw.writeAggregateHeader(TypeArray, n)
 }
@@ -89,7 +89,7 @@ func (rw *Writer) WriteArrayStreamHeader() error {
 
 // WriteAttributeHeader writes an attribute header for an attribute with n field-value items.
 //
-// If n is < -1, ErrInvalidAggregateTypeLength is returned.
+// If n is < 0, ErrInvalidAggregateTypeLength is returned.
 func (rw *Writer) WriteAttributeHeader(n int64) error {
 	return rw.writeAggregateHeader(TypeAttribute, n)
 }
@@ -181,7 +181,7 @@ func (rw *Writer) WriteEnd() error {
 
 // WriteMapHeader writes a map header for a map with n field-value items.
 //
-// If n is < -1, ErrInvalidAggregateTypeLength is returned.
+// If n is < 0, ErrInvalidAggregateTypeLength is returned.
 func (rw *Writer) WriteMapHeader(n int64) error {
 	return rw.writeAggregateHeader(TypeMap, n)
 }
@@ -206,7 +206,7 @@ func (rw *Writer) WriteNumber(n int64) error {
 
 // WritePushHeader writes a push header for a push array with n items.
 //
-// If n is < -1, ErrInvalidAggregateTypeLength is returned.
+// If n is < 0, ErrInvalidAggregateTypeLength is returned.
 func (rw *Writer) WritePushHeader(n int64) error {
 	return rw.writeAggregateHeader(TypePush, n)
 }
@@ -218,7 +218,7 @@ func (rw *Writer) WritePushStreamHeader() error {
 
 // WriteSetHeader writes a set header for a set with n items.
 //
-// If n is < -1, ErrInvalidAggregateTypeLength is returned.
+// If n is < 0, ErrInvalidAggregateTypeLength is returned.
 func (rw *Writer) WriteSetHeader(n int64) error {
 	return rw.writeAggregateHeader(TypeSet, n)
 }
