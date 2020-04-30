@@ -242,7 +242,7 @@ func (rr *Reader) readBlobBody(dst []byte, n int) ([]byte, error) {
 	dst = ensureSpace(dst, n)
 	for n > 0 {
 		line, err := rr.br.Peek(n)
-		if err != nil && err != bufio.ErrBufferFull {
+		if len(line) == 0 || (err != nil && err != bufio.ErrBufferFull) {
 			return nil, wrapEOF(err, "%d more bytes", n)
 		}
 		dst = append(dst, line...)
