@@ -7,9 +7,8 @@ import (
 	"io"
 	"io/ioutil"
 	"math/big"
-	"os"
-	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/nussjustin/resp3"
@@ -232,22 +231,6 @@ func copyReaderToWriter(tb testing.TB, rw *resp3.ReadWriter, buf []byte) {
 	}
 }
 
-func getTestFiles(tb testing.TB) []string {
-	files, err := filepath.Glob(filepath.Join("testdata", tb.Name(), "*.resp"))
-	if err != nil {
-		tb.Fatalf("failed to glob testdata directory: %s", err)
-	}
-	if len(files) == 0 {
-		tb.Fatalf("no test files found")
-	}
-	return files
-}
-
-type simpleReadWriter struct {
-	io.Reader
-	io.Writer
-}
-
 func TestTypeString(t *testing.T) {
 	for ty := resp3.Type(0); ty < ^resp3.Type(0); ty++ {
 		if ts := ty.String(); ts != fmt.Sprint(ty) {
@@ -256,55 +239,88 @@ func TestTypeString(t *testing.T) {
 	}
 }
 
-func testReadWriterUsingFile(t *testing.T, fileName string) {
-	file, err := os.Open(fileName)
-	if err != nil {
-		t.Fatalf("failed to read file %s: %s", fileName, err)
-	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			t.Errorf("failed to close file %s: %s", fileName, err)
-		}
-	}()
+type simpleReadWriter struct {
+	io.Reader
+	io.Writer
+}
 
-	var in, out bytes.Buffer
+var testReadWriterInput = strings.Replace(`+
++OK
++OK hello world
+-
+-ERR
+-ERR hello world
+:-1000
+:-100
+:-10
+:-1
+:0
+:1
+:10
+:100
+:1000
+$0
+
+$1
+a
+$5
+hello
+$11
+hello world
+*0
+*1
+*10
+.
+_
+%0
++0
+|0
+~0
+>0
+#t
+#f
+(123456789123456789123456789123456789
+=7
+foo:bar
+,123.456
+!5
+ERROR
+$?
+;5
+hello
+;5
+world
+;1
+!
+;0
+*?
+%?
+|?
+~?
+>?
+`, "\n", "\r\n", -1)
+
+func TestReadWriter(t *testing.T) {
+	var out bytes.Buffer
 
 	rw := resp3.NewReadWriter(&simpleReadWriter{
-		Reader: io.TeeReader(file, &in),
+		Reader: strings.NewReader(testReadWriterInput),
 		Writer: &out,
 	})
 
 	copyReaderToWriter(t, rw, nil)
 
-	if inString, outString := in.String(), out.String(); inString != outString {
+	if outString := out.String(); testReadWriterInput != outString {
 		t.Errorf("output differs from input")
 		t.Logf("input:\n%s\n", &out)
 		t.Logf("output:\n%s\n", &out)
 	}
 }
 
-func TestReadWriter(t *testing.T) {
-	for _, file := range getTestFiles(t) {
-		file := file
-
-		testName := filepath.Base(file)
-		testName = testName[:len(testName)-len(filepath.Ext(testName))]
-
-		t.Run(testName, func(t *testing.T) {
-			testReadWriterUsingFile(t, file)
-		})
-	}
-}
-
-func benchmarkReadWriterUsingFile(b *testing.B, fileName string) {
-	fileBytes, err := ioutil.ReadFile(fileName)
-	if err != nil {
-		b.Fatalf("failed to read file %s: %s", fileName, err)
-	}
-
-	fileBytesReader := bytes.NewReader(nil)
+func BenchmarkReadWriter(b *testing.B) {
+	in := strings.NewReader(testReadWriterInput)
 	srw := &simpleReadWriter{
-		Reader: fileBytesReader,
+		Reader: in,
 		Writer: ioutil.Discard,
 	}
 
@@ -312,27 +328,14 @@ func benchmarkReadWriterUsingFile(b *testing.B, fileName string) {
 
 	buf := make([]byte, 4096)
 
-	b.SetBytes(int64(len(fileBytes)))
+	b.SetBytes(int64(len(testReadWriterInput)))
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		fileBytesReader.Reset(fileBytes)
+		in.Reset(testReadWriterInput)
 		rw.Reset(srw)
 
 		copyReaderToWriter(b, rw, buf)
-	}
-}
-
-func BenchmarkReadWriter(b *testing.B) {
-	for _, file := range getTestFiles(b) {
-		file := file
-
-		testName := filepath.Base(file)
-		testName = testName[:len(testName)-len(filepath.Ext(testName))]
-
-		b.Run(testName, func(b *testing.B) {
-			benchmarkReadWriterUsingFile(b, file)
-		})
 	}
 }
