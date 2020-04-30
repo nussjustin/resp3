@@ -10,7 +10,7 @@ var (
 	// ErrSingleReadSizeLimitExceeded is returned when reading blob or simple values longer than the configured limit.
 	ErrSingleReadSizeLimitExceeded = errors.New("single read size limit exceeded")
 
-	// ErrInvalidAggregateTypeLength is returned when reading or writing an aggregate type header with a length < 0.
+	// ErrInvalidAggregateTypeLength is returned when reading or writing an aggregate type header with invalid length.
 	ErrInvalidAggregateTypeLength = errors.New("invalid aggregate type length")
 
 	// ErrInvalidBigNumber is returned when decoding an invalid big number.

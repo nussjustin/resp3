@@ -2,7 +2,6 @@ package resp3_test
 
 import (
 	"bufio"
-	"bytes"
 	"math"
 	"math/big"
 	"strconv"
@@ -55,7 +54,8 @@ func TestReaderPeek(t *testing.T) {
 	}
 
 	for i := byte(0); i < ^byte(0); i++ {
-		rr := resp3.NewReader(bytes.NewReader([]byte{i}))
+		rr, reset := newTestReader()
+		reset(string([]byte{i}))
 
 		ty, err := rr.Peek()
 		if types[resp3.Type(i)] {
@@ -67,6 +67,38 @@ func TestReaderPeek(t *testing.T) {
 			assertError(t, resp3.ErrInvalidType, err)
 		}
 	}
+
+	// special case for RESP3 compatibility
+	for _, in := range []string{
+		string(resp3.TypeArray) + "-1\r\n",
+		string(resp3.TypeBlobString) + "-1\r\n",
+	} {
+		rr, reset := newTestReader()
+		reset(in)
+
+		ty, err := rr.Peek()
+		assertError(t, nil, err)
+		if ty != resp3.TypeNull {
+			t.Errorf("got %s, expected nil", ty)
+		}
+	}
+}
+
+func benchmarkPeek(in string) func(*testing.B) {
+	return func(b *testing.B) {
+		rr, reset := newTestReader()
+		for i := 0; i < b.N; i++ {
+			reset(in)
+			_, _ = rr.Peek()
+		}
+	}
+}
+
+func BenchmarkReaderPeek(b *testing.B) {
+	b.Run("Invalid", benchmarkPeek("/\r\n"))
+	b.Run("NilArray", benchmarkPeek("*-1\r\n"))
+	b.Run("NilBlobString", benchmarkPeek("$-1\r\n"))
+	b.Run("Valid", benchmarkPeek("_\r\n"))
 }
 
 func TestReaderRead(t *testing.T) {
@@ -630,6 +662,16 @@ func testReadMap(t *testing.T) {
 
 func testReadNull(t *testing.T) {
 	runEmptyReadTest(t, resp3.TypeNull, (*resp3.Reader).ReadNull)
+
+	// RESP2 backward compatibility
+	for _, in := range []string{
+		string(resp3.TypeArray) + "-1\r\n",
+		string(resp3.TypeBlobString) + "-1\r\n",
+	} {
+		rr, reset := newTestReader()
+		reset(in)
+		assertError(t, nil, rr.ReadNull())
+	}
 }
 
 func testReadNumber(t *testing.T) {
@@ -791,9 +833,9 @@ func BenchmarkReaderRead(b *testing.B) {
 	b.Run("BlobString", makeReadBlobBenchmark(resp3.TypeBlobString, (*resp3.Reader).ReadBlobString))
 	b.Run("BlobChunk", benchmarkReadBlobChunk)
 	b.Run("BlobChunks", benchmarkReadBlobChunks)
-	b.Run("End", makeReadEmptyBenchmark(resp3.TypeEnd, (*resp3.Reader).ReadEnd))
+	b.Run("End", benchmarkReadEnd)
 	b.Run("Map", makeReadAggregationBenchmark(resp3.TypeMap, (*resp3.Reader).ReadMapHeader))
-	b.Run("Null", makeReadEmptyBenchmark(resp3.TypeNumber, (*resp3.Reader).ReadNull))
+	b.Run("Null", benchmarkReadNull)
 	b.Run("Number", benchmarkReadNumber)
 	b.Run("Push", makeReadAggregationBenchmark(resp3.TypePush, (*resp3.Reader).ReadPushHeader))
 	b.Run("Set", makeReadAggregationBenchmark(resp3.TypeSimpleError, (*resp3.Reader).ReadSetHeader))
@@ -844,17 +886,6 @@ func makeReadBlobBenchmark(ty resp3.Type, readBlob func(*resp3.Reader, []byte) (
 				_, _, _ = readBlob(rr, nil)
 			}
 		})
-	}
-}
-
-func makeReadEmptyBenchmark(ty resp3.Type, readEmpty func(*resp3.Reader) error) func(*testing.B) {
-	return func(b *testing.B) {
-		in := string(ty) + "\r\n"
-		rr, reset := newTestReader()
-		for i := 0; i < b.N; i++ {
-			reset(in)
-			_ = readEmpty(rr)
-		}
 	}
 }
 
@@ -942,6 +973,30 @@ func benchmarkReadBlobChunks(b *testing.B) {
 		reset(in)
 		benchVarBlobChunks, _ = rr.ReadBlobChunks(buf[:0])
 	}
+}
+
+func benchmarkReadEnd(b *testing.B) {
+	in := string(resp3.TypeEnd) + "\r\n"
+	rr, reset := newTestReader()
+	for i := 0; i < b.N; i++ {
+		reset(in)
+		_ = rr.ReadEnd()
+	}
+}
+
+func benchmarkReadNull(b *testing.B) {
+	makeBench := func(in string) func(*testing.B) {
+		return func(b *testing.B) {
+			rr, reset := newTestReader()
+			for i := 0; i < b.N; i++ {
+				reset(in)
+				_ = rr.ReadNull()
+			}
+		}
+	}
+	b.Run("Native", makeBench(string(resp3.TypeNull)+"\r\n"))
+	b.Run("NilArray", makeBench(string(resp3.TypeArray)+"-1\r\n"))
+	b.Run("NilBLobString", makeBench(string(resp3.TypeBlobString)+"-1\r\n"))
 }
 
 var benchVarNumber int64

@@ -40,36 +40,6 @@ func NewReader(r io.Reader) *Reader {
 	return &rr
 }
 
-// Reset sets the underlying io.Reader tor and resets all internal state.
-//
-// If the given io.Reader is an *bufio.Reader it is used directly without additional buffering.
-func (rr *Reader) Reset(r io.Reader) {
-	if br, ok := r.(*bufio.Reader); ok {
-		rr.br = br
-		return
-	}
-
-	if rr.ownbr == nil {
-		rr.ownbr = bufio.NewReader(r)
-	} else {
-		rr.ownbr.Reset(r)
-	}
-
-	rr.br = rr.ownbr
-}
-
-// Peek looks at the next byte in the underlying reader and returns the Type of the response.
-func (rr *Reader) Peek() (Type, error) {
-	b, err := rr.br.Peek(1)
-	if err != nil {
-		return TypeInvalid, err
-	}
-	if t := types[b[0]]; t != TypeInvalid {
-		return t, nil
-	}
-	return TypeInvalid, fmt.Errorf("%w: %s", ErrInvalidType, b)
-}
-
 var errUnexpectedEOF = fmt.Errorf("%w: EOF", ErrUnexpectedEOL)
 
 func wrapEOF(err error, msg string, args ...interface{}) error {
@@ -101,16 +71,15 @@ func (rr *Reader) checkReadSizeLimit(n int) error {
 }
 
 func (rr *Reader) consume(b []byte) bool {
-	g, err := rr.br.Peek(len(b))
-	if err != nil || !bytes.Equal(g, b) {
-		return false
+	if rr.match(b) {
+		_, _ = rr.br.Discard(len(b))
+		return true
 	}
-	_, _ = rr.br.Discard(len(b))
-	return true
+	return false
 }
 
 func (rr *Reader) expect(t Type) error {
-	g, err := rr.Peek()
+	g, err := rr.peek()
 	if err != nil {
 		return wrapEOF(err, "value of type %q", t)
 	}
@@ -119,6 +88,25 @@ func (rr *Reader) expect(t Type) error {
 	}
 	_, err = rr.br.Discard(1)
 	return err
+}
+
+func (rr *Reader) match(b []byte) bool {
+	g, err := rr.br.Peek(len(b))
+	if err != nil || !bytes.Equal(g, b) {
+		return false
+	}
+	return true
+}
+
+func (rr *Reader) peek() (Type, error) {
+	b, err := rr.br.Peek(1)
+	if err != nil {
+		return TypeInvalid, err
+	}
+	if t := types[b[0]]; t != TypeInvalid {
+		return t, nil
+	}
+	return TypeInvalid, fmt.Errorf("%w: %s", ErrInvalidType, b)
 }
 
 func (rr *Reader) readEOL() error {
@@ -131,6 +119,39 @@ func (rr *Reader) readEOL() error {
 	}
 	_, err = rr.br.Discard(len(b))
 	return err
+}
+
+// Reset sets the underlying io.Reader tor and resets all internal state.
+//
+// If the given io.Reader is an *bufio.Reader it is used directly without additional buffering.
+func (rr *Reader) Reset(r io.Reader) {
+	if br, ok := r.(*bufio.Reader); ok {
+		rr.br = br
+		return
+	}
+
+	if rr.ownbr == nil {
+		rr.ownbr = bufio.NewReader(r)
+	} else {
+		rr.ownbr.Reset(r)
+	}
+
+	rr.br = rr.ownbr
+}
+
+// Peek returns the Type of the next value.
+//
+// For backwards compatibility with RESP2, if the next value is either an array or
+// an blob string with length -1, TypeNull will be returned. ReadNull also handles
+// this case and will correctly parse the value, treating it as a normal null value.
+func (rr *Reader) Peek() (Type, error) {
+	t, err := rr.peek()
+	if t == TypeArray || t == TypeBlobString {
+		if rr.match([]byte{byte(t), '-', '1', '\r', '\n'}) {
+			return TypeNull, nil
+		}
+	}
+	return t, err
 }
 
 func (rr *Reader) readDouble() (float64, error) {
@@ -249,7 +270,10 @@ func (rr *Reader) readLine(dst []byte) ([]byte, error) {
 			break
 		}
 	}
-	return removeEOLMarker(dst)
+	if len(dst) < 2 || dst[len(dst)-2] != '\r' || dst[len(dst)-1] != '\n' {
+		return nil, ErrUnexpectedEOL
+	}
+	return dst[:len(dst)-2], nil
 }
 
 func (rr *Reader) readSimple(t Type, dst []byte) ([]byte, error) {
@@ -266,13 +290,6 @@ func ensureSpace(b []byte, n int) []byte {
 		return newb
 	}
 	return b
-}
-
-func removeEOLMarker(b []byte) ([]byte, error) {
-	if len(b) < 2 || b[len(b)-2] != '\r' || b[len(b)-1] != '\n' {
-		return nil, ErrUnexpectedEOL
-	}
-	return b[:len(b)-2], nil
 }
 
 func (rr *Reader) readAggregateHeader(t Type) (int64, bool, error) {
@@ -423,8 +440,21 @@ func (rr *Reader) ReadMapHeader() (n int64, chunked bool, err error) {
 
 // ReadNull reads a stream end marker.
 //
+// For backwards compatibility with RESP2, if the next value is either an array or
+// an blob string with length -1, ReadNull will treat the value as a normal null
+// value.
+//
 // If the next type in the response is not null, ErrUnexpectedType is returned.
 func (rr *Reader) ReadNull() error {
+	ty, err := rr.peek()
+	if err != nil {
+		return wrapEOF(err, "value of type %q", TypeNull)
+	}
+	if ty == TypeArray || ty == TypeBlobString {
+		if rr.consume([]byte{byte(ty), '-', '1', '\r', '\n'}) {
+			return nil
+		}
+	}
 	if err := rr.expect(TypeNull); err != nil {
 		return err
 	}
