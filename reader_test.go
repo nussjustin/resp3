@@ -883,40 +883,33 @@ func makeReadSimpleBenchmark(ty resp3.Type, readSimple func(*resp3.Reader, []byt
 	}
 }
 
-var benchVarBigNumber = new(big.Int)
-
 func benchmarkReadBigNumber(b *testing.B) {
 	in := string(resp3.TypeBigNumber) + "123456789123456789123456789123456789\r\n"
 	rr, reset := newTestReader(in)
+	n := new(big.Int)
 	for i := 0; i < b.N; i++ {
 		reset(in)
-		_ = rr.ReadBigNumber(benchVarBigNumber)
+		_ = rr.ReadBigNumber(n)
 	}
 }
-
-var benchVarBoolean bool
 
 func benchmarkReadBoolean(b *testing.B) {
 	in := string(resp3.TypeBoolean) + "t\r\n"
 	rr, reset := newTestReader(in)
 	for i := 0; i < b.N; i++ {
 		reset(in)
-		benchVarBoolean, _ = rr.ReadBoolean()
+		_, _ = rr.ReadBoolean()
 	}
 }
-
-var benchVarDouble float64
 
 func benchmarkReadDouble(b *testing.B) {
 	in := string(resp3.TypeDouble) + "1234.5678\r\n"
 	rr, reset := newTestReader(in)
 	for i := 0; i < b.N; i++ {
 		reset(in)
-		benchVarDouble, _ = rr.ReadDouble()
+		_, _ = rr.ReadDouble()
 	}
 }
-
-var benchVarBlobChunk []byte
 
 func benchmarkReadBlobChunk(b *testing.B) {
 	b.Run("Chunk", func(b *testing.B) {
@@ -925,7 +918,7 @@ func benchmarkReadBlobChunk(b *testing.B) {
 		rr, reset := newTestReader(in)
 		for i := 0; i < b.N; i++ {
 			reset(in)
-			benchVarBlobChunk, _, _ = rr.ReadBlobChunk(buf[:0])
+			_, _, _ = rr.ReadBlobChunk(buf[:0])
 		}
 	})
 
@@ -934,12 +927,10 @@ func benchmarkReadBlobChunk(b *testing.B) {
 		rr, reset := newTestReader(in)
 		for i := 0; i < b.N; i++ {
 			reset(in)
-			benchVarBlobChunk, _, _ = rr.ReadBlobChunk(nil)
+			_, _, _ = rr.ReadBlobChunk(nil)
 		}
 	})
 }
-
-var benchVarBlobChunks []byte
 
 func benchmarkReadBlobChunks(b *testing.B) {
 	var buf [32]byte
@@ -953,7 +944,7 @@ func benchmarkReadBlobChunks(b *testing.B) {
 	rr, reset := newTestReader(in)
 	for i := 0; i < b.N; i++ {
 		reset(in)
-		benchVarBlobChunks, _ = rr.ReadBlobChunks(buf[:0])
+		_, _ = rr.ReadBlobChunks(buf[:0])
 	}
 }
 
@@ -981,18 +972,14 @@ func benchmarkReadNull(b *testing.B) {
 	b.Run("NilBLobString", makeBench(string(resp3.TypeBlobString)+"-1\r\n"))
 }
 
-var benchVarNumber int64
-
 func benchmarkReadNumber(b *testing.B) {
 	in := string(resp3.TypeNumber) + "12345678\r\n"
 	rr, reset := newTestReader(in)
 	for i := 0; i < b.N; i++ {
 		reset(in)
-		benchVarNumber, _ = rr.ReadNumber()
+		_, _ = rr.ReadNumber()
 	}
 }
-
-var benchVarVerbatimString []byte
 
 func benchmarkReadVerbatimString(b *testing.B) {
 	var buf [36]byte
@@ -1000,6 +987,6 @@ func benchmarkReadVerbatimString(b *testing.B) {
 	rr, reset := newTestReader(in)
 	for i := 0; i < b.N; i++ {
 		reset(in)
-		benchVarVerbatimString, _ = rr.ReadVerbatimString(buf[:0])
+		_, _ = rr.ReadVerbatimString(buf[:0])
 	}
 }
