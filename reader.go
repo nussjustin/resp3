@@ -42,7 +42,7 @@ func NewReader(r io.Reader) *Reader {
 var errUnexpectedEOF = fmt.Errorf("%w: EOF", ErrUnexpectedEOL)
 
 func wrapEOF(err error, msg string, args ...interface{}) error {
-	if err != io.EOF {
+	if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return err
 	}
 	if msg == "" {
@@ -239,22 +239,14 @@ func (rr *Reader) readBlobBody(dst []byte, n int) ([]byte, error) {
 	if err := rr.checkReadSizeLimit(n); err != nil {
 		return nil, err
 	}
-	dst = ensureSpace(dst, n)
-	for n > 0 {
-		line, err := rr.br.Peek(n)
-		if len(line) == 0 || (err != nil && err != bufio.ErrBufferFull) {
-			return nil, wrapEOF(err, "%d more bytes", n)
-		}
-		dst = append(dst, line...)
-		n -= len(line)
-		if _, err := rr.br.Discard(len(line)); err != nil {
-			return nil, err
-		}
+	b := ensureSpace(dst, n)[:len(dst)+n]
+	if nn, err := io.ReadFull(rr.br, b[len(dst):]); err != nil {
+		return nil, wrapEOF(err, "%d more bytes", n-nn)
 	}
 	if err := rr.readEOL(); err != nil {
 		return nil, err
 	}
-	return dst, nil
+	return b, nil
 }
 
 func (rr *Reader) readLine(dst []byte) ([]byte, error) {
