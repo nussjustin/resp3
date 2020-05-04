@@ -23,7 +23,7 @@ func assertBytesEqual(tb testing.TB, expected, actual []byte) {
 		if len(actual) > 64 {
 			actual = append(actual[:64], "... "+strconv.Itoa(len(actual)-64)+" more characters"...)
 		}
-		tb.Errorf("got %q, expected %q", expected, actual)
+		tb.Errorf("got %q, expected %q", actual, expected)
 	}
 }
 
