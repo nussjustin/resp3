@@ -48,14 +48,7 @@ func wrapEOF(err error, msg string, args ...interface{}) error {
 	if msg == "" {
 		return errUnexpectedEOF
 	}
-	switch len(args) {
-	case 0:
-		return fmt.Errorf("%w: expected "+msg+", got EOF", ErrUnexpectedEOL)
-	case 1:
-		return fmt.Errorf("%w: expected "+msg+", got EOF", ErrUnexpectedEOL, args[0])
-	default:
-		return fmt.Errorf("%w: expected "+msg+", got EOF", append([]interface{}{ErrUnexpectedEOL}, args...)...)
-	}
+	return fmt.Errorf("%w: expected %s, got EOF", ErrUnexpectedEOL, fmt.Sprintf(msg, args...))
 }
 
 func (rr *Reader) checkReadSizeLimit(n int) error {
@@ -253,7 +246,7 @@ func (rr *Reader) readLine(dst []byte) ([]byte, error) {
 	slen := len(dst)
 	for {
 		line, err := rr.br.ReadSlice('\n')
-		if err != nil && err != bufio.ErrBufferFull {
+		if err != nil && !errors.Is(err, bufio.ErrBufferFull) {
 			return nil, wrapEOF(err, "")
 		}
 		if err := rr.checkReadSizeLimit(len(line) - len("\r\n") + len(dst) - slen); err != nil {
