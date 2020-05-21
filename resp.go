@@ -34,9 +34,9 @@ var (
 	// ErrInvalidType is returned when decoding an unknown type.
 	ErrInvalidType = errors.New("invalid type")
 
-	// ErrInvalidVerbatimStringPrefix is returned when decoding or encoding a verbatim string prefix that has more or
+	// ErrInvalidVerbatimString is returned when decoding or encoding a verbatim string prefix that has more or
 	// less than 3 characters.
-	ErrInvalidVerbatimStringPrefix = errors.New("invalid verbatim string prefix")
+	ErrInvalidVerbatimString = errors.New("invalid verbatim string")
 
 	// ErrUnexpectedEOL is returned when reading a line that does not end in \r.\n
 	ErrUnexpectedEOL = errors.New("unexpected EOL")

@@ -29,6 +29,9 @@ var ReaderFuncs = []struct {
 	{Name: "SimpleError", Func: func(rr *resp3.Reader) error { _, err := rr.ReadSimpleError(nil); return err }},
 	{Name: "SimpleString", Func: func(rr *resp3.Reader) error { _, err := rr.ReadSimpleString(nil); return err }},
 	{Name: "VerbatimString", Func: func(rr *resp3.Reader) error { _, err := rr.ReadVerbatimString(nil); return err }},
+
+	{Name: "Discard", Func: func(rr *resp3.Reader) error { _, err := rr.Discard(false); return err }},
+	{Name: "Discard (Nested)", Func: func(rr *resp3.Reader) error { _, err := rr.Discard(true); return err }},
 }
 
 func Reader(data []byte) int {

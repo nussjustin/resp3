@@ -141,6 +141,9 @@ func (rr *Reader) Reset(r io.Reader) {
 // this case and will correctly parse the value, treating it as a normal null value.
 func (rr *Reader) Peek() (Type, error) {
 	t, err := rr.peek()
+	if err != nil {
+		return t, err
+	}
 	if t == TypeArray || t == TypeBlobString {
 		if rr.match([]byte{byte(t), '-', '1', '\r', '\n'}) {
 			return TypeNull, nil
@@ -379,22 +382,18 @@ func (rr *Reader) ReadBoolean() (bool, error) {
 	if err := rr.expect(TypeBoolean); err != nil {
 		return false, err
 	}
-	p, err := rr.br.Peek(len("t\r\n"))
+	var buf [1]byte
+	b, err := rr.readLine(buf[:0])
 	if err != nil {
-		return false, wrapEOF(err, "")
-	}
-	if p[0] != 't' && p[0] != 'f' {
-		return false, fmt.Errorf("%w: expected f or t, got %c", ErrInvalidBoolean, p[1])
-	}
-	// read here, since the call to discard may invalidate p
-	b := p[0] == 't'
-	if p[1] != '\r' || p[2] != '\n' {
-		return false, fmt.Errorf("%w: expected \\r\\n, got %q", ErrUnexpectedEOL, string(p[1:]))
-	}
-	if _, err := rr.br.Discard(len(p)); err != nil {
 		return false, err
 	}
-	return b, nil
+	if len(b) == 0 {
+		return false, wrapEOF(ErrUnexpectedEOL, "")
+	}
+	if len(b) != 1 || (b[0] != 't' && b[0] != 'f') {
+		return false, fmt.Errorf("%w: expected f or t, got %q", ErrInvalidBoolean, string(b))
+	}
+	return b[0] == 't', nil
 }
 
 // ReadDouble reads a double.
@@ -502,7 +501,113 @@ func (rr *Reader) ReadVerbatimString(b []byte) ([]byte, error) {
 		if n := verbatimPrefixLength*verbatimPrefixLength + 1; len(p) >= n {
 			p = p[:n]
 		}
-		return nil, fmt.Errorf("%w: %q", ErrInvalidVerbatimStringPrefix, string(p))
+		return nil, fmt.Errorf("%w: %q", ErrInvalidVerbatimString, string(p))
 	}
 	return b, nil
+}
+
+func (rr *Reader) discardAggregate(t Type, nested bool) error {
+	n, chunked, err := rr.readAggregateHeader(t)
+	if !nested || err != nil {
+		return err
+	}
+	if chunked {
+		return rr.discardAggregateChunks()
+	}
+	if t == TypeAttribute || t == TypeMap {
+		n *= 2
+	}
+	return rr.discardN(n)
+}
+
+func (rr *Reader) discardAggregateChunks() error {
+	for {
+		t, err := rr.Discard(true)
+		if t == TypeEnd || err != nil {
+			return err
+		}
+	}
+}
+
+func (rr *Reader) discardBlob(t Type, nested bool) error {
+	if rr.consume([]byte{byte(t), '?', '\r', '\n'}) {
+		if !nested {
+			return nil
+		}
+		return rr.discardBlobChunks()
+	}
+	_, err := rr.readBlob(t, nil)
+	return err
+}
+
+func (rr *Reader) discardBlobChunk() error {
+	_, _, err := rr.ReadBlobChunk(nil)
+	return err
+}
+
+func (rr *Reader) discardBlobChunks() error {
+	var buf [512]byte
+	_, err := rr.ReadBlobChunks(buf[:0])
+	return err
+}
+
+func (rr *Reader) discardN(n int64) error {
+	for ; n > 0; n-- {
+		if _, err := rr.Discard(true); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (rr *Reader) discardSimple(t Type) error {
+	var buf [64]byte
+	_, err := rr.readSimple(t, buf[:0])
+	return err
+}
+
+// Discard reads and discards the next value, returning its type.
+//
+// If nested is true and the next value is either an aggregate type or a chunked blob, the following values belonging
+// to the aggregate or blob will be discarded too.
+func (rr *Reader) Discard(nested bool) (Type, error) {
+	t, err := rr.Peek()
+	if err != nil {
+		return TypeInvalid, err
+	}
+
+	switch t {
+	case TypeArray, TypeAttribute, TypeMap, TypePush, TypeSet:
+		err = rr.discardAggregate(t, nested)
+	case TypeBlobError, TypeBlobString:
+		err = rr.discardBlob(t, nested)
+	case TypeBlobChunk:
+		if nested {
+			err = rr.discardBlobChunks()
+		} else {
+			err = rr.discardBlobChunk()
+		}
+	case TypeSimpleError, TypeSimpleString:
+		err = rr.discardSimple(t)
+	case TypeBigNumber:
+		var n big.Int
+		err = rr.ReadBigNumber(&n)
+	case TypeBoolean:
+		_, err = rr.ReadBoolean()
+	case TypeDouble:
+		_, err = rr.ReadDouble()
+	case TypeEnd:
+		err = rr.ReadEnd()
+	case TypeNumber:
+		_, err = rr.ReadNumber()
+	case TypeNull:
+		err = rr.ReadNull()
+	case TypeVerbatimString:
+		_, err = rr.ReadVerbatimString(nil)
+	}
+
+	if err != nil {
+		return TypeInvalid, wrapEOF(err, "")
+	}
+	return t, nil
 }

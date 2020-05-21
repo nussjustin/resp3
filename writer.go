@@ -244,10 +244,10 @@ const verbatimPrefixLength = 3
 
 // WriteVerbatimString writes the byte slice s unvalidated as a verbatim string using p as prefix.
 //
-// If len(p) is not 3, ErrInvalidVerbatimStringPrefix will be returned.
+// If len(p) is not 3, ErrInvalidVerbatimString will be returned.
 func (rw *Writer) WriteVerbatimString(p string, s string) error {
 	if len(p) != verbatimPrefixLength {
-		return ErrInvalidVerbatimStringPrefix
+		return ErrInvalidVerbatimString
 	}
 	rw.buf = append(rw.buf[:0], byte(TypeVerbatimString))
 	rw.buf = strconv.AppendInt(rw.buf, int64(len(p)+1+len(s)), 10)

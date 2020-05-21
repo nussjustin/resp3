@@ -301,10 +301,10 @@ func testWriteVerbatimString(t *testing.T) {
 		s   string
 		err error
 	}{
-		{"", "hello", "", resp3.ErrInvalidVerbatimStringPrefix},
-		{"t", "hello", "", resp3.ErrInvalidVerbatimStringPrefix},
-		{"tx", "hello", "", resp3.ErrInvalidVerbatimStringPrefix},
-		{"txtx", "hello", "", resp3.ErrInvalidVerbatimStringPrefix},
+		{"", "hello", "", resp3.ErrInvalidVerbatimString},
+		{"t", "hello", "", resp3.ErrInvalidVerbatimString},
+		{"tx", "hello", "", resp3.ErrInvalidVerbatimString},
+		{"txtx", "hello", "", resp3.ErrInvalidVerbatimString},
 
 		{"foo", "", "=4\r\nfoo:\r\n", nil},
 		{"txt", "hello", "=9\r\ntxt:hello\r\n", nil},

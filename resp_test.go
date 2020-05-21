@@ -216,10 +216,11 @@ func copyReaderToWriter(tb testing.TB, rw *resp3.ReadWriter, buf []byte) {
 	}
 	for {
 		ty, err := rw.Peek()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
+			tb.Logf("%#v", errors.Unwrap(err))
 			tb.Fatalf("failed to peek at next type: %s", err)
 		}
 
