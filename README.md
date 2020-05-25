@@ -42,12 +42,7 @@ REDIS_HOST=/tmp/redis.sock  go test -tags integration # unix socket
 Note: If you want to test using a unix socket, make sure that the path to the socket starts with a slash,
 for example `/tmp/redis.sock`.
 
-Debug logging for integration tests be enabled by passing the `-debug` flag to `go test`.
-
-## Release History
-
-* 0.1.0
-    * Initial release
+Debug logging for integration tests can be enabled by passing the `-debug` flag to `go test`.
 
 ## Meta
 
