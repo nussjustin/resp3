@@ -38,6 +38,9 @@ var (
 	// less than 3 characters.
 	ErrInvalidVerbatimString = errors.New("invalid verbatim string")
 
+	// ErrOverflow is returned when decoding a number that overflows or underflows an int64.
+	ErrOverflow = errors.New("number overflowed")
+
 	// ErrUnexpectedEOL is returned when reading a line that does not end in \r.\n
 	ErrUnexpectedEOL = errors.New("unexpected EOL")
 

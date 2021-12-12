@@ -170,6 +170,8 @@ func runAggregateReadTest(t *testing.T, ty resp3.Type, readHeader func(*resp3.Re
 		{in: p("2\r\n"), n: 2},
 
 		{in: p("?\r\n"), n: -1, chunked: true},
+
+		{in: p("184467440737095516151\r\n"), err: resp3.ErrOverflow},
 	} {
 		rr, _ := newTestReader(c.in)
 		n, chunked, err := readHeader(rr)
@@ -254,6 +256,8 @@ func runBlobReadTest(t *testing.T, ty resp3.Type, readBlob func(*resp3.Reader, [
 			limit: 4,
 			err:   resp3.ErrSingleReadSizeLimitExceeded,
 		},
+
+		{in: p("184467440737095516151\r\n"), err: resp3.ErrOverflow},
 	} {
 		withBuf := func(base []byte) {
 			rr, _ := newTestReader(c.in)
@@ -697,6 +701,10 @@ func testReadNumber(t *testing.T) {
 		{in: p("-\r\n"), err: resp3.ErrUnexpectedEOL},
 		{in: p("+\r\n"), err: resp3.ErrInvalidNumber},
 		{in: p("+1\r\n"), err: resp3.ErrInvalidNumber},
+
+		// Numbers are parsed as int64
+		{in: p("-184467440737095516151\r\n"), err: resp3.ErrOverflow},
+		{in: p("184467440737095516151\r\n"), err: resp3.ErrOverflow},
 	} {
 		rr, _ := newTestReader(c.in)
 		n, err := rr.ReadNumber()

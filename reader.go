@@ -184,8 +184,12 @@ loop:
 		case b == '-' && i == 0:
 			neg = true
 		case b >= '0' && b <= '9':
+			p := n
 			n *= 10
 			n += int64(b - '0')
+			if n < p {
+				return 0, fmt.Errorf("%w: at character %c (index %d)", ErrOverflow, b, i)
+			}
 		case b == '\r' || b == '\n':
 			_ = rr.br.UnreadByte()
 			break loop
