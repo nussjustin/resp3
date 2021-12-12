@@ -8,13 +8,13 @@ import (
 	"strconv"
 )
 
-// Writer wraps an io.Writer and provides methods for writing the RESP protocol.
+// Writer allows writing RESP values to an io.Writer.
 type Writer struct {
 	w   io.Writer
 	buf []byte
 }
 
-// NewWriter returns a *Writer that uses the given io.Writer for writes.
+// NewWriter returns a *Writer that writes all data unbuffered to w.
 func NewWriter(w io.Writer) *Writer {
 	var rw Writer
 	rw.Reset(w)
@@ -87,7 +87,7 @@ func (rw *Writer) WriteArrayStreamHeader() error {
 	return rw.writeAggregateStreamHeader(TypeArray)
 }
 
-// WriteAttributeHeader writes an attribute header for an attribute with n field-value items.
+// WriteAttributeHeader writes an attribute header for an attribute with n field-value pairs.
 //
 // If n is < 0, ErrInvalidAggregateTypeLength is returned.
 func (rw *Writer) WriteAttributeHeader(n int64) error {
@@ -179,7 +179,7 @@ func (rw *Writer) WriteEnd() error {
 	return err
 }
 
-// WriteMapHeader writes a map header for a map with n field-value items.
+// WriteMapHeader writes a map header for a map with n field-value pairs.
 //
 // If n is < 0, ErrInvalidAggregateTypeLength is returned.
 func (rw *Writer) WriteMapHeader(n int64) error {
@@ -199,7 +199,7 @@ func (rw *Writer) WriteNull() error {
 	return err
 }
 
-// WriteNumber writes the number i using the RESP integer type.
+// WriteNumber writes the number n using the RESP integer type.
 func (rw *Writer) WriteNumber(n int64) error {
 	return rw.writeNumber(TypeNumber, n)
 }

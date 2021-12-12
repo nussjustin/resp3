@@ -6,8 +6,8 @@
 [![Test](https://github.com/nussjustin/resp3/workflows/Test/badge.svg)](https://github.com/nussjustin/resp3/actions?query=workflow%3ATest)
 [![Go Report Card](https://goreportcard.com/badge/github.com/nussjustin/resp3)](https://goreportcard.com/report/github.com/nussjustin/resp3)
 
-This is a small package that provides fast reader and writer types for version 3 of the
-[REdis Serialization Protocol](https://redis.io/topics/protocol) (short RESP).
+resp3 is a small package that provides fast reader and writer types for [version 3](https://github.com/antirez/RESP3/blob/master/spec.md) of the
+[REdis Serialization Protocol](https://redis.io/topics/protocol) (RESP for short).
 
 ## Installation
 
@@ -29,7 +29,7 @@ If you want to run integration tests you need to pass the `integration` tag to `
 go test -tags integration
 ```
 
-By default integration tests will try to connect to a Redis instance on `127.0.0.1:6379`.
+By default, integration tests will try to connect to a Redis instance on `127.0.0.1:6379`.
 
 If your instance has a non-default config, you can use the `REDIS_HOST` environment variable, to override the address:
 

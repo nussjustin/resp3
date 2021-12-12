@@ -9,12 +9,14 @@ import (
 	"strconv"
 )
 
-// Reader wraps an io.Reader and provides methods for reading the RESP protocol.
+// Reader implements methods for reading RESP 2 & 3 encoded data from an io.Reader.
 type Reader struct {
-	// SingleReadSizeLimit defines the maximum size of blobs (either errors, strings or chunks) that can can be read,
-	// excluding the type, line endings and, in case of blobs, the size. If the Reader encounters a value larger than
-	// this limit, an error wrapping ErrSingleReadSizeLimitExceeded will be returned.
+	// SingleReadSizeLimit defines the maximum number of bytes that will can be read for a single RESP encoded value
+	// excluding type prefix, line endings and, in case of blobs, the size. If the Reader encounters a value larger
+	// than this limit, an error wrapping ErrSingleReadSizeLimitExceeded will be returned.
+	//
 	// If SingleReadSizeLimit is 0, DefaultSingleReadSizeLimit is used instead.
+	//
 	// A negative < 0 value disables the limit.
 	SingleReadSizeLimit int
 
@@ -22,7 +24,10 @@ type Reader struct {
 
 	// ownbr holds a *bufio.Reader that is reused when calling Reset. This is used in cases the io.Reader given to
 	// Reset is already a *bufio.Reader to avoid reusing the user given *bufio.Reader when calling Reset.
-	ownbr *bufio.Reader
+	ownbr bufio.Reader
+
+	// temporary buffer for data. only used for discarding data
+	buf []byte
 }
 
 const (
@@ -125,19 +130,14 @@ func (rr *Reader) Reset(r io.Reader) {
 		return
 	}
 
-	if rr.ownbr == nil {
-		rr.ownbr = bufio.NewReader(r)
-	} else {
-		rr.ownbr.Reset(r)
-	}
-
-	rr.br = rr.ownbr
+	rr.ownbr.Reset(r)
+	rr.br = &rr.ownbr
 }
 
 // Peek returns the Type of the next value.
 //
 // For backwards compatibility with RESP2, if the next value is either an array or
-// an blob string with length -1, TypeNull will be returned. ReadNull also handles
+// a blob string with length -1, TypeNull will be returned. ReadNull also handles
 // this case and will correctly parse the value, treating it as a normal null value.
 func (rr *Reader) Peek() (Type, error) {
 	t, err := rr.peek()
@@ -310,6 +310,9 @@ func (rr *Reader) ReadArrayHeader() (n int64, chunked bool, err error) {
 
 // ReadAttributeHeader reads an attribute header, returning the attribute size.
 //
+// Note that unlike arrays, pushes and sets, the returned size specifies the number
+// of field-value pairs and not the total number of values.
+//
 // If the array is chunked, n will be set to -1 and chunked will be set to true.
 // If the next type in the response is not an attribute, ErrUnexpectedType is returned.
 func (rr *Reader) ReadAttributeHeader() (n int64, chunked bool, err error) {
@@ -379,7 +382,7 @@ func (rr *Reader) ReadBlobString(b []byte) (bb []byte, chunked bool, err error) 
 	return rr.readChunkableBlob(TypeBlobString, b)
 }
 
-// ReadBoolean reads a boolean.
+// ReadBoolean reads a boolean value.
 //
 // If the next type in the response is not boolean, ErrUnexpectedType is returned.
 func (rr *Reader) ReadBoolean() (bool, error) {
@@ -422,6 +425,9 @@ func (rr *Reader) ReadEnd() error {
 
 // ReadMapHeader reads a map header, returning the map size.
 //
+// Note that unlike arrays, pushes and sets, the returned size specifies the number
+// of field-value pairs and not the total number of values.
+//
 // If the array is chunked, n will be set to -1 and chunked will be set to true.
 // If the next type in the response is not a map, ErrUnexpectedType is returned.
 func (rr *Reader) ReadMapHeader() (n int64, chunked bool, err error) {
@@ -431,7 +437,7 @@ func (rr *Reader) ReadMapHeader() (n int64, chunked bool, err error) {
 // ReadNull reads a stream end marker.
 //
 // For backwards compatibility with RESP2, if the next value is either an array or
-// an blob string with length -1, ReadNull will treat the value as a normal null
+// a blob string with length -1, ReadNull will treat the value as a normal null
 // value.
 //
 // If the next type in the response is not null, ErrUnexpectedType is returned.
@@ -540,18 +546,19 @@ func (rr *Reader) discardBlob(t Type, nested bool) error {
 		}
 		return rr.discardBlobChunks()
 	}
-	_, err := rr.readBlob(t, nil)
+	_, err := rr.readBlob(t, rr.buf[:0])
 	return err
 }
 
 func (rr *Reader) discardBlobChunk() error {
-	_, _, err := rr.ReadBlobChunk(nil)
+	var err error
+	rr.buf, _, err = rr.ReadBlobChunk(rr.buf[:0])
 	return err
 }
 
 func (rr *Reader) discardBlobChunks() error {
-	var buf [512]byte
-	_, err := rr.ReadBlobChunks(buf[:0])
+	var err error
+	rr.buf, err = rr.ReadBlobChunks(rr.buf[:0])
 	return err
 }
 
@@ -565,8 +572,14 @@ func (rr *Reader) discardN(n int64) error {
 }
 
 func (rr *Reader) discardSimple(t Type) error {
-	var buf [64]byte
-	_, err := rr.readSimple(t, buf[:0])
+	var err error
+	rr.buf, err = rr.readSimple(t, rr.buf[:0])
+	return err
+}
+
+func (rr *Reader) discardVerbatimString() error {
+	var err error
+	rr.buf, err = rr.ReadVerbatimString(rr.buf[:0])
 	return err
 }
 
@@ -607,11 +620,14 @@ func (rr *Reader) Discard(nested bool) (Type, error) {
 	case TypeNull:
 		err = rr.ReadNull()
 	case TypeVerbatimString:
-		_, err = rr.ReadVerbatimString(nil)
+		err = rr.discardVerbatimString()
 	}
+
+	rr.buf = rr.buf[:0]
 
 	if err != nil {
 		return TypeInvalid, wrapEOF(err, "")
 	}
+
 	return t, nil
 }

@@ -1,4 +1,4 @@
-// Package resp3 implements fast Reader and Writer types for parsing the Redis RESP3 protocol.
+// Package resp3 implements fast Reader and Writer types for parsing the RESP3 protocol.
 //
 // This package is low level and only deals with parsing of the different types of the RESP protocol.
 //

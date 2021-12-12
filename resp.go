@@ -54,39 +54,39 @@ type Type byte
 const (
 	// TypeInvalid is used to denote invalid RESP types.
 	TypeInvalid Type = 0
-	// TypeArray is the RESP protocol type for arrays.
+	// TypeArray is the RESP type (prefix) for arrays.
 	TypeArray Type = '*'
-	// TypeAttribute is the RESP protocol type for attributes.
+	// TypeAttribute is the RESP type (prefix) for attributes.
 	TypeAttribute Type = '|'
-	// TypeBigNumber is the RESP protocol type for big numbers.
+	// TypeBigNumber is the RESP type (prefix) for big numbers.
 	TypeBigNumber Type = '('
-	// TypeBoolean is the RESP protocol type for booleans.
+	// TypeBoolean is the RESP type (prefix) for booleans.
 	TypeBoolean Type = '#'
-	// TypeDouble is the RESP protocol type for double.
+	// TypeDouble is the RESP type (prefix) for double.
 	TypeDouble Type = ','
-	// TypeBlobChunk is the RESP protocol type for blob chunks.
+	// TypeBlobChunk is the RESP type (prefix) for blob chunks.
 	TypeBlobChunk Type = ';'
-	// TypeBlobError is the RESP protocol type for blob errors.
+	// TypeBlobError is the RESP type (prefix) for blob errors.
 	TypeBlobError Type = '!'
-	// TypeBlobString is the RESP protocol type for blob strings.
+	// TypeBlobString is the RESP type (prefix) for blob strings.
 	TypeBlobString Type = '$'
-	// TypeEnd is the RESP protocol type for stream ends.
+	// TypeEnd is the RESP type (prefix) for stream ends.
 	TypeEnd Type = '.'
-	// TypeMap is the RESP protocol type for maps.
+	// TypeMap is the RESP type (prefix) for maps.
 	TypeMap Type = '%'
-	// TypeNull is the RESP protocol type for null.
+	// TypeNull is the RESP type (prefix) for null.
 	TypeNull Type = '_'
-	// TypeNumber is the RESP protocol type for numbers.
+	// TypeNumber is the RESP type (prefix) for numbers.
 	TypeNumber Type = ':'
-	// TypePush is the RESP protocol type for push data.
+	// TypePush is the RESP type (prefix) for push data.
 	TypePush Type = '>'
-	// TypeSet is the RESP protocol type for sets.
+	// TypeSet is the RESP type (prefix) for sets.
 	TypeSet Type = '~'
-	// TypeSimpleError is the RESP protocol type for simple errors.
+	// TypeSimpleError is the RESP type (prefix) for simple errors.
 	TypeSimpleError Type = '-'
-	// TypeSimpleString is the RESP protocol type for simple strings.
+	// TypeSimpleString is the RESP type (prefix) for simple strings.
 	TypeSimpleString Type = '+'
-	// TypeVerbatimString is the RESP protocol type for verbatim strings.
+	// TypeVerbatimString is the RESP type (prefix) for verbatim strings.
 	TypeVerbatimString Type = '='
 )
 

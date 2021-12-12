@@ -2,18 +2,15 @@ package resp3_test
 
 import (
 	"bufio"
-	"bytes"
 	"io"
 	"io/ioutil"
 	"math"
 	"math/big"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/nussjustin/resp3"
-	"github.com/nussjustin/resp3/internal/fuzz"
 )
 
 func assertReadResultEqual(tb testing.TB, expected, actual []byte, expectedErr, actualErr error) {
@@ -815,35 +812,6 @@ func testReadVerbatimString(t *testing.T) {
 		}
 		withBuf(nil)
 		withBuf([]byte("existing data"))
-	}
-}
-
-func TestReaderReadCrashers(t *testing.T) {
-	files, err := filepath.Glob(filepath.Join("testdata", "crashers", "*.quoted"))
-	if err != nil {
-		t.Fatalf("failed to get crashers: %s", err)
-	}
-
-	for _, file := range files {
-		name := filepath.Base(file)
-		name = name[:len(name)-len(filepath.Ext(file))]
-
-		t.Run(name, func(t *testing.T) {
-			b, err := ioutil.ReadFile(file)
-			if err != nil {
-				t.Fatalf("failed to read %s: %s", file, err)
-			}
-			in, err := strconv.Unquote(string(bytes.TrimSpace(b)))
-			if err != nil {
-				t.Fatalf("invalid input: %s", string(b))
-			}
-			for _, f := range fuzz.ReaderFuncs {
-				t.Run(f.Name, func(t *testing.T) {
-					rr := resp3.NewReader(strings.NewReader(in))
-					_ = f.Func(rr)
-				})
-			}
-		})
 	}
 }
 
