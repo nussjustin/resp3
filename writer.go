@@ -245,7 +245,7 @@ const verbatimPrefixLength = 3
 // WriteVerbatimString writes the byte slice s unvalidated as a verbatim string using p as prefix.
 //
 // If len(p) is not 3, ErrInvalidVerbatimString will be returned.
-func (rw *Writer) WriteVerbatimString(p string, s string) error {
+func (rw *Writer) WriteVerbatimString(p []byte, s []byte) error {
 	if len(p) != verbatimPrefixLength {
 		return ErrInvalidVerbatimString
 	}

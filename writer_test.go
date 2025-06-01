@@ -311,6 +311,6 @@ func testWriteVerbatimString(t *testing.T) {
 		{"mkd", "hello world", "=15\r\nmkd:hello world\r\n", nil},
 		{"bar", "hello\r\nworld", "=16\r\nbar:hello\r\nworld\r\n", nil},
 	} {
-		assert(c.s, c.err, rw.WriteVerbatimString(c.p, c.v))
+		assert(c.s, c.err, rw.WriteVerbatimString([]byte(c.p), []byte(c.v)))
 	}
 }

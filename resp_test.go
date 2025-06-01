@@ -204,7 +204,7 @@ var copyFuncs = [255]func(testing.TB, *resp3.ReadWriter, []byte){
 		if err != nil {
 			tb.Fatalf("failed to read verbatim string: %s", err)
 		}
-		if err := rw.WriteVerbatimString(string(b[:3]), string(b[4:])); err != nil {
+		if err := rw.WriteVerbatimString(b[:3], b[4:]); err != nil {
 			tb.Fatalf("failed to write verbatim string %q: %s", string(b), err)
 		}
 	},
