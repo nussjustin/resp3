@@ -140,3 +140,19 @@ func (rrw *ReadWriter) Reset(rw io.ReadWriter) {
 	rrw.Reader.Reset(rw)
 	rrw.Writer.Reset(rw)
 }
+
+// Marshaler can be implemented by types that can marshal themselves to RESP3 data.
+type Marshaler interface {
+	// MarshalRESP3 is called when trying to marshal the receiver into a stream of RESP3 data.
+	//
+	// The given writer must not be retained beyond the call of the method.
+	MarshalRESP3(w *Writer) error
+}
+
+// Unmarshaler can be implemented by types that can unmarshal themselves from RESP3 data.
+type Unmarshaler interface {
+	// UnmarshalRESP3 is called when trying to unmarshal data from a stream of RESP3 data.
+	//
+	// The given reader must not be retained beyond the call of the method.
+	UnmarshalRESP3(r *Reader) error
+}
