@@ -4,16 +4,15 @@ import (
 	"bufio"
 	"bytes"
 	"io"
-	"io/ioutil"
+	"maps"
 	"math"
 	"math/big"
-	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/nussjustin/resp3"
-	"github.com/nussjustin/resp3/internal/fuzz"
 )
 
 func assertReadResultEqual(tb testing.TB, expected, actual []byte, expectedErr, actualErr error) {
@@ -818,35 +817,6 @@ func testReadVerbatimString(t *testing.T) {
 	}
 }
 
-func TestReaderReadCrashers(t *testing.T) {
-	files, err := filepath.Glob(filepath.Join("testdata", "crashers", "*.quoted"))
-	if err != nil {
-		t.Fatalf("failed to get crashers: %s", err)
-	}
-
-	for _, file := range files {
-		name := filepath.Base(file)
-		name = name[:len(name)-len(filepath.Ext(file))]
-
-		t.Run(name, func(t *testing.T) {
-			b, err := ioutil.ReadFile(file)
-			if err != nil {
-				t.Fatalf("failed to read %s: %s", file, err)
-			}
-			in, err := strconv.Unquote(string(bytes.TrimSpace(b)))
-			if err != nil {
-				t.Fatalf("invalid input: %s", string(b))
-			}
-			for _, f := range fuzz.ReaderFuncs {
-				t.Run(f.Name, func(t *testing.T) {
-					rr := resp3.NewReader(strings.NewReader(in))
-					_ = f.Func(rr)
-				})
-			}
-		})
-	}
-}
-
 func BenchmarkReaderRead(b *testing.B) {
 	b.Run("Array", makeReadAggregationBenchmark(resp3.TypeArray, (*resp3.Reader).ReadArrayHeader))
 	b.Run("Attribute", makeReadAggregationBenchmark(resp3.TypeAttribute, (*resp3.Reader).ReadAttributeHeader))
@@ -1033,861 +1003,805 @@ func benchmarkReadVerbatimString(b *testing.B) {
 	}
 }
 
+type discardTest struct {
+	in string
+
+	limit  int
+	nested bool
+
+	ty   resp3.Type
+	err  error
+	rest string
+}
+
+var discardTests = map[string][]discardTest{
+	"All": {
+		{
+			err: io.EOF,
+		},
+
+		{
+			in:   "A",
+			err:  resp3.ErrInvalidType,
+			rest: "A",
+		},
+	},
+	"Array": {
+		{
+			in:  "*0",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in: "*-1\r\n",
+			ty: resp3.TypeNull,
+		},
+		{
+			in: "*0\r\n",
+			ty: resp3.TypeArray,
+		},
+		{
+			in: "*1\r\n",
+			ty: resp3.TypeArray,
+		},
+		{
+			in:   "*1\r\n+OK\r\n",
+			ty:   resp3.TypeArray,
+			rest: "+OK\r\n",
+		},
+		{
+			in:     "*1\r\n+OK\r\n",
+			nested: true,
+			ty:     resp3.TypeArray,
+		},
+		{
+			in:     "*1\r\n+OK\r\n-ERR\r\n",
+			nested: true,
+			ty:     resp3.TypeArray,
+			rest:   "-ERR\r\n",
+		},
+		{
+			in:     "*2\r\n+OK\r\n",
+			nested: true,
+			err:    resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:     "*1\r\n*2\r\n+OK\r\n-ERR\r\n",
+			nested: true,
+			ty:     resp3.TypeArray,
+		},
+	},
+	"Attribute": {
+		{
+			in:  "|0",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  "|-1\r\n",
+			err: resp3.ErrInvalidAggregateTypeLength,
+		},
+		{
+			in: "|0\r\n",
+			ty: resp3.TypeAttribute,
+		},
+		{
+			in: "|1\r\n",
+			ty: resp3.TypeAttribute,
+		},
+		{
+			in:   "|1\r\n+OK\r\n",
+			ty:   resp3.TypeAttribute,
+			rest: "+OK\r\n",
+		},
+		{
+			in:     "|1\r\n+OK\r\n",
+			nested: true,
+			err:    resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:     "|1\r\n+OK\r\n-ERR\r\n",
+			nested: true,
+			ty:     resp3.TypeAttribute,
+		},
+		{
+			in:     "|1\r\n+OK\r\n-ERR\r\n:1234\r\n",
+			nested: true,
+			ty:     resp3.TypeAttribute,
+			rest:   ":1234\r\n",
+		},
+		{
+			in:     "|2\r\n+OK\r\n",
+			nested: true,
+			err:    resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:     "|1\r\n+KEY\r\n*2\r\n+OK\r\n-ERR\r\n",
+			nested: true,
+			ty:     resp3.TypeAttribute,
+		},
+	},
+	"BigNumber": {
+		{
+			in:  "(",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  "(\r\n",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  "(12345678901234567890123456789012345678901234567890",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in: "(12345678901234567890123456789012345678901234567890\r\n",
+			ty: resp3.TypeBigNumber,
+		},
+		{
+			in:  "(12345678901234567890123456789012345678901234567890.1234\r\n",
+			err: resp3.ErrInvalidBigNumber,
+		},
+		{
+			in:   "(12345678901234567890123456789012345678901234567890\r\n+OK\r\n",
+			ty:   resp3.TypeBigNumber,
+			rest: "+OK\r\n",
+		},
+		{
+			in:     "(12345678901234567890123456789012345678901234567890\r\n+OK\r\n",
+			nested: true,
+			ty:     resp3.TypeBigNumber,
+			rest:   "+OK\r\n",
+		},
+	},
+	"Boolean": {
+		{
+			in:  "#",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  "#\r\n",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  "#f",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in: "#f\r\n",
+			ty: resp3.TypeBoolean,
+		},
+		{
+			in:  "#t",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in: "#t\r\n",
+			ty: resp3.TypeBoolean,
+		},
+		{
+			in:   "#f\r\n+OK\r\n",
+			ty:   resp3.TypeBoolean,
+			rest: "+OK\r\n",
+		},
+		{
+			in:     "#f\r\n+OK\r\n",
+			ty:     resp3.TypeBoolean,
+			nested: true,
+			rest:   "+OK\r\n",
+		},
+	},
+	"BlobChunk": {
+		{
+			in:  ";",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  ";\r\n",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in: ";0\r\n",
+			ty: resp3.TypeBlobChunk,
+		},
+		{
+			in: ";5\r\nhello\r\n",
+			ty: resp3.TypeBlobChunk,
+		},
+		{
+			in:  ";5\r\nhell\r\n",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  ";5\r\nhello!\r\n",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  ";-1\r\n",
+			err: resp3.ErrInvalidBlobLength,
+		},
+		{
+			in:   ";5\r\nhello\r\n+OK\r\n",
+			ty:   resp3.TypeBlobChunk,
+			rest: "+OK\r\n",
+		},
+		{
+			in:     ";5\r\nhello\r\n+OK\r\n",
+			nested: true,
+			err:    resp3.ErrUnexpectedType,
+			rest:   "+OK\r\n",
+		},
+		{
+			in:  ";?\r\n",
+			err: resp3.ErrInvalidNumber,
+		},
+		{
+			in:  ";1234567890\r\n",
+			err: resp3.ErrSingleReadSizeLimitExceeded,
+		},
+		{
+			in:    ";6\r\n",
+			limit: 5,
+			err:   resp3.ErrSingleReadSizeLimitExceeded,
+		},
+	},
+	"BlobError": {
+		{
+			in:  "!",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  "!\r\n",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  "!0\r\n",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in: "!0\r\n\r\n",
+			ty: resp3.TypeBlobError,
+		},
+		{
+			in: "!5\r\nhello\r\n",
+			ty: resp3.TypeBlobError,
+		},
+		{
+			in:  "!5\r\nhell\r\n",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  "!5\r\nhello!\r\n",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  "!-1\r\n",
+			err: resp3.ErrInvalidBlobLength,
+		},
+		{
+			in:   "!5\r\nhello\r\n+OK\r\n",
+			ty:   resp3.TypeBlobError,
+			rest: "+OK\r\n",
+		},
+		{
+			in:     "!5\r\nhello\r\n+OK\r\n",
+			nested: true,
+			ty:     resp3.TypeBlobError,
+			rest:   "+OK\r\n",
+		},
+		{
+			in: "!?\r\n",
+			ty: resp3.TypeBlobError,
+		},
+		{
+			in:     "!?\r\n",
+			nested: true,
+			err:    resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:     "!?\r\n;5\r\nhello\r\n",
+			nested: true,
+			err:    resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:     "!?\r\n;5\r\nhello\r\n;0\r\n",
+			ty:     resp3.TypeBlobError,
+			nested: true,
+		},
+		{
+			in:     "!?\r\n;5\r\nhello\r\n;6\r\nworld\r\n;0\r\n",
+			nested: true,
+			err:    resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:   "!?\r\n;5\r\nhello\r\n;0\r\n",
+			ty:   resp3.TypeBlobError,
+			rest: ";5\r\nhello\r\n;0\r\n",
+		},
+		{
+			in:     "!?\r\n!5\r\nhello\r\n",
+			nested: true,
+			err:    resp3.ErrUnexpectedType,
+		},
+		{
+			in:  "!1234567890\r\n",
+			err: resp3.ErrSingleReadSizeLimitExceeded,
+		},
+		{
+			in:    "!6\r\n",
+			limit: 5,
+			err:   resp3.ErrSingleReadSizeLimitExceeded,
+		},
+	},
+	"BlobString": {
+		{
+			in:  "$",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  "$\r\n",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  "$0\r\n",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in: "$0\r\n\r\n",
+			ty: resp3.TypeBlobString,
+		},
+		{
+			in: "$5\r\nhello\r\n",
+			ty: resp3.TypeBlobString,
+		},
+		{
+			in:  "$5\r\nhell\r\n",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  "$5\r\nhello$\r\n",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in: "$-1\r\n",
+			ty: resp3.TypeNull,
+		},
+		{
+			in:  "$-2\r\n",
+			err: resp3.ErrInvalidBlobLength,
+		},
+		{
+			in:   "$5\r\nhello\r\n+OK\r\n",
+			ty:   resp3.TypeBlobString,
+			rest: "+OK\r\n",
+		},
+		{
+			in:     "$5\r\nhello\r\n+OK\r\n",
+			nested: true,
+			ty:     resp3.TypeBlobString,
+			rest:   "+OK\r\n",
+		},
+		{
+			in: "$?\r\n",
+			ty: resp3.TypeBlobString,
+		},
+		{
+			in:     "$?\r\n",
+			nested: true,
+			err:    resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:     "$?\r\n;5\r\nhello\r\n",
+			nested: true,
+			err:    resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:     "$?\r\n;5\r\nhello\r\n;0\r\n",
+			ty:     resp3.TypeBlobString,
+			nested: true,
+		},
+		{
+			in:     "$?\r\n;5\r\nhello\r\n;6\r\nworld\r\n;0\r\n",
+			nested: true,
+			err:    resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:   "$?\r\n;5\r\nhello\r\n;0\r\n",
+			ty:   resp3.TypeBlobString,
+			rest: ";5\r\nhello\r\n;0\r\n",
+		},
+		{
+			in:     "$?\r\n$5\r\nhello\r\n",
+			nested: true,
+			err:    resp3.ErrUnexpectedType,
+		},
+		{
+			in:  "$1234567890\r\n",
+			err: resp3.ErrSingleReadSizeLimitExceeded,
+		},
+		{
+			in:    "$6\r\n",
+			limit: 5,
+			err:   resp3.ErrSingleReadSizeLimitExceeded,
+		},
+	},
+	"Double": {
+		{
+			in:  ",",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  ",\r\n",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  ",1234",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in: ",1234\r\n",
+			ty: resp3.TypeDouble,
+		},
+		{
+			in: ",1234.5678\r\n",
+			ty: resp3.TypeDouble,
+		},
+		{
+			in:   ",1234.5678\r\n+OK\r\n",
+			ty:   resp3.TypeDouble,
+			rest: "+OK\r\n",
+		},
+		{
+			in:     ",1234.5678\r\n+OK\r\n",
+			nested: true,
+			ty:     resp3.TypeDouble,
+			rest:   "+OK\r\n",
+		},
+	},
+	"End": {
+		{
+			in:  ".",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in: ".\r\n",
+			ty: resp3.TypeEnd,
+		},
+		{
+			in:   ".\r\n+OK\r\n",
+			ty:   resp3.TypeEnd,
+			rest: "+OK\r\n",
+		},
+		{
+			in:     ".\r\n+OK\r\n",
+			ty:     resp3.TypeEnd,
+			nested: true,
+			rest:   "+OK\r\n",
+		},
+	},
+	"Map": {
+		{
+			in:  "%0",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  "%-1\r\n",
+			err: resp3.ErrInvalidAggregateTypeLength,
+		},
+		{
+			in: "%0\r\n",
+			ty: resp3.TypeMap,
+		},
+		{
+			in: "%1\r\n",
+			ty: resp3.TypeMap,
+		},
+		{
+			in:   "%1\r\n+OK\r\n",
+			ty:   resp3.TypeMap,
+			rest: "+OK\r\n",
+		},
+		{
+			in:     "%1\r\n+OK\r\n",
+			nested: true,
+			err:    resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:     "%1\r\n+OK\r\n-ERR\r\n",
+			nested: true,
+			ty:     resp3.TypeMap,
+		},
+		{
+			in:     "%1\r\n+OK\r\n-ERR\r\n:1234\r\n",
+			nested: true,
+			ty:     resp3.TypeMap,
+			rest:   ":1234\r\n",
+		},
+		{
+			in:     "%2\r\n+OK\r\n",
+			nested: true,
+			err:    resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:     "%1\r\n+KEY\r\n*2\r\n+OK\r\n-ERR\r\n",
+			nested: true,
+			ty:     resp3.TypeMap,
+		},
+	},
+	"Number": {
+		{
+			in:  ":",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  ":\r\n",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  ":1234",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in: ":1234\r\n",
+			ty: resp3.TypeNumber,
+		},
+		{
+			in:  ":1234.5678\r\n",
+			err: resp3.ErrInvalidNumber,
+		},
+		{
+			in:   ":1234\r\n+OK\r\n",
+			ty:   resp3.TypeNumber,
+			rest: "+OK\r\n",
+		},
+		{
+			in:     ":1234\r\n+OK\r\n",
+			nested: true,
+			ty:     resp3.TypeNumber,
+			rest:   "+OK\r\n",
+		},
+	},
+	"Null": {
+		{
+			in:  "_",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in: "_\r\n",
+			ty: resp3.TypeNull,
+		},
+		{
+			in:   "_\r\n+OK\r\n",
+			ty:   resp3.TypeNull,
+			rest: "+OK\r\n",
+		},
+		{
+			in:     "_\r\n+OK\r\n",
+			ty:     resp3.TypeNull,
+			nested: true,
+			rest:   "+OK\r\n",
+		},
+	},
+	"Push": {
+		{
+			in:  ">0",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  ">-1\r\n",
+			err: resp3.ErrInvalidAggregateTypeLength,
+		},
+		{
+			in: ">0\r\n",
+			ty: resp3.TypePush,
+		},
+		{
+			in: ">1\r\n",
+			ty: resp3.TypePush,
+		},
+		{
+			in:   ">1\r\n+OK\r\n",
+			ty:   resp3.TypePush,
+			rest: "+OK\r\n",
+		},
+		{
+			in:     ">1\r\n+OK\r\n",
+			nested: true,
+			ty:     resp3.TypePush,
+		},
+		{
+			in:     ">1\r\n+OK\r\n-ERR\r\n",
+			nested: true,
+			ty:     resp3.TypePush,
+			rest:   "-ERR\r\n",
+		},
+		{
+			in:     ">2\r\n+OK\r\n",
+			nested: true,
+			err:    resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:     ">1\r\n>2\r\n+OK\r\n-ERR\r\n",
+			nested: true,
+			ty:     resp3.TypePush,
+		},
+	},
+	"Set": {
+		{
+			in:  "~0",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  "~-1\r\n",
+			err: resp3.ErrInvalidAggregateTypeLength,
+		},
+		{
+			in: "~0\r\n",
+			ty: resp3.TypeSet,
+		},
+		{
+			in: "~1\r\n",
+			ty: resp3.TypeSet,
+		},
+		{
+			in:   "~1\r\n+OK\r\n",
+			ty:   resp3.TypeSet,
+			rest: "+OK\r\n",
+		},
+		{
+			in:     "~1\r\n+OK\r\n",
+			nested: true,
+			ty:     resp3.TypeSet,
+		},
+		{
+			in:     "~1\r\n+OK\r\n-ERR\r\n",
+			nested: true,
+			ty:     resp3.TypeSet,
+			rest:   "-ERR\r\n",
+		},
+		{
+			in:     "~2\r\n+OK\r\n",
+			nested: true,
+			err:    resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:     "~1\r\n~2\r\n+OK\r\n-ERR\r\n",
+			nested: true,
+			ty:     resp3.TypeSet,
+		},
+	},
+	"SimpleError": {
+		{
+			in:  "-",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in: "-\r\n",
+			ty: resp3.TypeSimpleError,
+		},
+		{
+			in: "-ERR something went wrong\r\n",
+			ty: resp3.TypeSimpleError,
+		},
+		{
+			in:   "-ERR something went wrong\r\n+OK\r\n",
+			ty:   resp3.TypeSimpleError,
+			rest: "+OK\r\n",
+		},
+		{
+			in:     "-ERR something went wrong\r\n+OK\r\n",
+			nested: true,
+			ty:     resp3.TypeSimpleError,
+			rest:   "+OK\r\n",
+		},
+		{
+			in:  "-ERR" + strings.Repeat("a", resp3.DefaultSingleReadSizeLimit) + "\r\n",
+			err: resp3.ErrSingleReadSizeLimitExceeded,
+		},
+		{
+			in:    "-ERR hello world\r\n",
+			limit: 5,
+			err:   resp3.ErrSingleReadSizeLimitExceeded,
+		},
+	},
+	"SimpleString": {
+		{
+			in:  "+",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in: "+\r\n",
+			ty: resp3.TypeSimpleString,
+		},
+		{
+			in: "+OK something went right\r\n",
+			ty: resp3.TypeSimpleString,
+		},
+		{
+			in:   "+OK something went right\r\n+OK\r\n",
+			ty:   resp3.TypeSimpleString,
+			rest: "+OK\r\n",
+		},
+		{
+			in:     "+OK something went right\r\n+OK\r\n",
+			nested: true,
+			ty:     resp3.TypeSimpleString,
+			rest:   "+OK\r\n",
+		},
+		{
+			in:  "+OK" + strings.Repeat("a", resp3.DefaultSingleReadSizeLimit) + "\r\n",
+			err: resp3.ErrSingleReadSizeLimitExceeded,
+		},
+		{
+			in:    "+OK hello world\r\n",
+			limit: 5,
+			err:   resp3.ErrSingleReadSizeLimitExceeded,
+		},
+	},
+	"VerbatimString": {
+		{
+			in:  "=",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  "=\r\n",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  "=0\r\n",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  "=0\r\n\r\n",
+			err: resp3.ErrInvalidVerbatimString,
+		},
+		{
+			in:  "=-1\r\n",
+			err: resp3.ErrInvalidBlobLength,
+		},
+		{
+			in:  "=2\r\nhe\r\n",
+			err: resp3.ErrInvalidVerbatimString,
+		},
+		{
+			in:  "=5\r\nhello\r\n",
+			err: resp3.ErrInvalidVerbatimString,
+		},
+		{
+			in: "=5\r\nhel:o\r\n",
+			ty: resp3.TypeVerbatimString,
+		},
+		{
+			in:   "=5\r\nhel:o\r\n+OK\r\n",
+			ty:   resp3.TypeVerbatimString,
+			rest: "+OK\r\n",
+		},
+		{
+			in:     "=5\r\nhel:o\r\n+OK\r\n",
+			nested: true,
+			ty:     resp3.TypeVerbatimString,
+			rest:   "+OK\r\n",
+		},
+		{
+			in:  "=?\r\n",
+			err: resp3.ErrInvalidNumber,
+		},
+		{
+			in:  "=1234567890\r\n",
+			err: resp3.ErrSingleReadSizeLimitExceeded,
+		},
+		{
+			in:    "=6\r\n",
+			limit: 5,
+			err:   resp3.ErrSingleReadSizeLimitExceeded,
+		},
+	},
+}
+
 func TestReaderDiscard(t *testing.T) {
-	type test struct {
-		in string
+	names := slices.Sorted(maps.Keys(discardTests))
 
-		limit  int
-		nested bool
-
-		ty   resp3.Type
-		err  error
-		rest string
-	}
-
-	type testGroup struct {
-		name  string
-		tests []test
-	}
-
-	for _, group := range []testGroup{
-		{
-			name: "All",
-			tests: []test{
-				{
-					err: io.EOF,
-				},
-
-				{
-					in:   "A",
-					err:  resp3.ErrInvalidType,
-					rest: "A",
-				},
-			},
-		},
-		{
-			name: "Array",
-			tests: []test{
-				{
-					in:  "*0",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in: "*-1\r\n",
-					ty: resp3.TypeNull,
-				},
-				{
-					in: "*0\r\n",
-					ty: resp3.TypeArray,
-				},
-				{
-					in: "*1\r\n",
-					ty: resp3.TypeArray,
-				},
-				{
-					in:   "*1\r\n+OK\r\n",
-					ty:   resp3.TypeArray,
-					rest: "+OK\r\n",
-				},
-				{
-					in:     "*1\r\n+OK\r\n",
-					nested: true,
-					ty:     resp3.TypeArray,
-				},
-				{
-					in:     "*1\r\n+OK\r\n-ERR\r\n",
-					nested: true,
-					ty:     resp3.TypeArray,
-					rest:   "-ERR\r\n",
-				},
-				{
-					in:     "*2\r\n+OK\r\n",
-					nested: true,
-					err:    resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:     "*1\r\n*2\r\n+OK\r\n-ERR\r\n",
-					nested: true,
-					ty:     resp3.TypeArray,
-				},
-			},
-		},
-		{
-			name: "Attribute",
-			tests: []test{
-				{
-					in:  "|0",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  "|-1\r\n",
-					err: resp3.ErrInvalidAggregateTypeLength,
-				},
-				{
-					in: "|0\r\n",
-					ty: resp3.TypeAttribute,
-				},
-				{
-					in: "|1\r\n",
-					ty: resp3.TypeAttribute,
-				},
-				{
-					in:   "|1\r\n+OK\r\n",
-					ty:   resp3.TypeAttribute,
-					rest: "+OK\r\n",
-				},
-				{
-					in:     "|1\r\n+OK\r\n",
-					nested: true,
-					err:    resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:     "|1\r\n+OK\r\n-ERR\r\n",
-					nested: true,
-					ty:     resp3.TypeAttribute,
-				},
-				{
-					in:     "|1\r\n+OK\r\n-ERR\r\n:1234\r\n",
-					nested: true,
-					ty:     resp3.TypeAttribute,
-					rest:   ":1234\r\n",
-				},
-				{
-					in:     "|2\r\n+OK\r\n",
-					nested: true,
-					err:    resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:     "|1\r\n+KEY\r\n*2\r\n+OK\r\n-ERR\r\n",
-					nested: true,
-					ty:     resp3.TypeAttribute,
-				},
-			},
-		},
-		{
-			name: "BigNumber",
-			tests: []test{
-				{
-					in:  "(",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  "(\r\n",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  "(12345678901234567890123456789012345678901234567890",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in: "(12345678901234567890123456789012345678901234567890\r\n",
-					ty: resp3.TypeBigNumber,
-				},
-				{
-					in:  "(12345678901234567890123456789012345678901234567890.1234\r\n",
-					err: resp3.ErrInvalidBigNumber,
-				},
-				{
-					in:   "(12345678901234567890123456789012345678901234567890\r\n+OK\r\n",
-					ty:   resp3.TypeBigNumber,
-					rest: "+OK\r\n",
-				},
-				{
-					in:     "(12345678901234567890123456789012345678901234567890\r\n+OK\r\n",
-					nested: true,
-					ty:     resp3.TypeBigNumber,
-					rest:   "+OK\r\n",
-				},
-			},
-		},
-		{
-			name: "Boolean",
-			tests: []test{
-				{
-					in:  "#",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  "#\r\n",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  "#f",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in: "#f\r\n",
-					ty: resp3.TypeBoolean,
-				},
-				{
-					in:  "#t",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in: "#t\r\n",
-					ty: resp3.TypeBoolean,
-				},
-				{
-					in:   "#f\r\n+OK\r\n",
-					ty:   resp3.TypeBoolean,
-					rest: "+OK\r\n",
-				},
-				{
-					in:     "#f\r\n+OK\r\n",
-					ty:     resp3.TypeBoolean,
-					nested: true,
-					rest:   "+OK\r\n",
-				},
-			},
-		},
-		{
-			name: "BlobChunk",
-			tests: []test{
-				{
-					in:  ";",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  ";\r\n",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in: ";0\r\n",
-					ty: resp3.TypeBlobChunk,
-				},
-				{
-					in: ";5\r\nhello\r\n",
-					ty: resp3.TypeBlobChunk,
-				},
-				{
-					in:  ";5\r\nhell\r\n",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  ";5\r\nhello!\r\n",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  ";-1\r\n",
-					err: resp3.ErrInvalidBlobLength,
-				},
-				{
-					in:   ";5\r\nhello\r\n+OK\r\n",
-					ty:   resp3.TypeBlobChunk,
-					rest: "+OK\r\n",
-				},
-				{
-					in:     ";5\r\nhello\r\n+OK\r\n",
-					nested: true,
-					err:    resp3.ErrUnexpectedType,
-					rest:   "+OK\r\n",
-				},
-				{
-					in:  ";?\r\n",
-					err: resp3.ErrInvalidNumber,
-				},
-				{
-					in:  ";1234567890\r\n",
-					err: resp3.ErrSingleReadSizeLimitExceeded,
-				},
-				{
-					in:    ";6\r\n",
-					limit: 5,
-					err:   resp3.ErrSingleReadSizeLimitExceeded,
-				},
-			},
-		},
-		{
-			name: "BlobError",
-			tests: []test{
-				{
-					in:  "!",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  "!\r\n",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  "!0\r\n",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in: "!0\r\n\r\n",
-					ty: resp3.TypeBlobError,
-				},
-				{
-					in: "!5\r\nhello\r\n",
-					ty: resp3.TypeBlobError,
-				},
-				{
-					in:  "!5\r\nhell\r\n",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  "!5\r\nhello!\r\n",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  "!-1\r\n",
-					err: resp3.ErrInvalidBlobLength,
-				},
-				{
-					in:   "!5\r\nhello\r\n+OK\r\n",
-					ty:   resp3.TypeBlobError,
-					rest: "+OK\r\n",
-				},
-				{
-					in:     "!5\r\nhello\r\n+OK\r\n",
-					nested: true,
-					ty:     resp3.TypeBlobError,
-					rest:   "+OK\r\n",
-				},
-				{
-					in: "!?\r\n",
-					ty: resp3.TypeBlobError,
-				},
-				{
-					in:     "!?\r\n",
-					nested: true,
-					err:    resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:     "!?\r\n;5\r\nhello\r\n",
-					nested: true,
-					err:    resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:     "!?\r\n;5\r\nhello\r\n;0\r\n",
-					ty:     resp3.TypeBlobError,
-					nested: true,
-				},
-				{
-					in:     "!?\r\n;5\r\nhello\r\n;6\r\nworld\r\n;0\r\n",
-					nested: true,
-					err:    resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:   "!?\r\n;5\r\nhello\r\n;0\r\n",
-					ty:   resp3.TypeBlobError,
-					rest: ";5\r\nhello\r\n;0\r\n",
-				},
-				{
-					in:     "!?\r\n!5\r\nhello\r\n",
-					nested: true,
-					err:    resp3.ErrUnexpectedType,
-				},
-				{
-					in:  "!1234567890\r\n",
-					err: resp3.ErrSingleReadSizeLimitExceeded,
-				},
-				{
-					in:    "!6\r\n",
-					limit: 5,
-					err:   resp3.ErrSingleReadSizeLimitExceeded,
-				},
-			},
-		},
-		{
-			name: "BlobString",
-			tests: []test{
-				{
-					in:  "$",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  "$\r\n",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  "$0\r\n",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in: "$0\r\n\r\n",
-					ty: resp3.TypeBlobString,
-				},
-				{
-					in: "$5\r\nhello\r\n",
-					ty: resp3.TypeBlobString,
-				},
-				{
-					in:  "$5\r\nhell\r\n",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  "$5\r\nhello$\r\n",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in: "$-1\r\n",
-					ty: resp3.TypeNull,
-				},
-				{
-					in:  "$-2\r\n",
-					err: resp3.ErrInvalidBlobLength,
-				},
-				{
-					in:   "$5\r\nhello\r\n+OK\r\n",
-					ty:   resp3.TypeBlobString,
-					rest: "+OK\r\n",
-				},
-				{
-					in:     "$5\r\nhello\r\n+OK\r\n",
-					nested: true,
-					ty:     resp3.TypeBlobString,
-					rest:   "+OK\r\n",
-				},
-				{
-					in: "$?\r\n",
-					ty: resp3.TypeBlobString,
-				},
-				{
-					in:     "$?\r\n",
-					nested: true,
-					err:    resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:     "$?\r\n;5\r\nhello\r\n",
-					nested: true,
-					err:    resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:     "$?\r\n;5\r\nhello\r\n;0\r\n",
-					ty:     resp3.TypeBlobString,
-					nested: true,
-				},
-				{
-					in:     "$?\r\n;5\r\nhello\r\n;6\r\nworld\r\n;0\r\n",
-					nested: true,
-					err:    resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:   "$?\r\n;5\r\nhello\r\n;0\r\n",
-					ty:   resp3.TypeBlobString,
-					rest: ";5\r\nhello\r\n;0\r\n",
-				},
-				{
-					in:     "$?\r\n$5\r\nhello\r\n",
-					nested: true,
-					err:    resp3.ErrUnexpectedType,
-				},
-				{
-					in:  "$1234567890\r\n",
-					err: resp3.ErrSingleReadSizeLimitExceeded,
-				},
-				{
-					in:    "$6\r\n",
-					limit: 5,
-					err:   resp3.ErrSingleReadSizeLimitExceeded,
-				},
-			},
-		},
-		{
-			name: "Double",
-			tests: []test{
-				{
-					in:  ",",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  ",\r\n",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  ",1234",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in: ",1234\r\n",
-					ty: resp3.TypeDouble,
-				},
-				{
-					in: ",1234.5678\r\n",
-					ty: resp3.TypeDouble,
-				},
-				{
-					in:   ",1234.5678\r\n+OK\r\n",
-					ty:   resp3.TypeDouble,
-					rest: "+OK\r\n",
-				},
-				{
-					in:     ",1234.5678\r\n+OK\r\n",
-					nested: true,
-					ty:     resp3.TypeDouble,
-					rest:   "+OK\r\n",
-				},
-			},
-		},
-		{
-			name: "End",
-			tests: []test{
-				{
-					in:  ".",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in: ".\r\n",
-					ty: resp3.TypeEnd,
-				},
-				{
-					in:   ".\r\n+OK\r\n",
-					ty:   resp3.TypeEnd,
-					rest: "+OK\r\n",
-				},
-				{
-					in:     ".\r\n+OK\r\n",
-					ty:     resp3.TypeEnd,
-					nested: true,
-					rest:   "+OK\r\n",
-				},
-			},
-		},
-		{
-			name: "Map",
-			tests: []test{
-				{
-					in:  "%0",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  "%-1\r\n",
-					err: resp3.ErrInvalidAggregateTypeLength,
-				},
-				{
-					in: "%0\r\n",
-					ty: resp3.TypeMap,
-				},
-				{
-					in: "%1\r\n",
-					ty: resp3.TypeMap,
-				},
-				{
-					in:   "%1\r\n+OK\r\n",
-					ty:   resp3.TypeMap,
-					rest: "+OK\r\n",
-				},
-				{
-					in:     "%1\r\n+OK\r\n",
-					nested: true,
-					err:    resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:     "%1\r\n+OK\r\n-ERR\r\n",
-					nested: true,
-					ty:     resp3.TypeMap,
-				},
-				{
-					in:     "%1\r\n+OK\r\n-ERR\r\n:1234\r\n",
-					nested: true,
-					ty:     resp3.TypeMap,
-					rest:   ":1234\r\n",
-				},
-				{
-					in:     "%2\r\n+OK\r\n",
-					nested: true,
-					err:    resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:     "%1\r\n+KEY\r\n*2\r\n+OK\r\n-ERR\r\n",
-					nested: true,
-					ty:     resp3.TypeMap,
-				},
-			},
-		},
-		{
-			name: "Number",
-			tests: []test{
-				{
-					in:  ":",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  ":\r\n",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  ":1234",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in: ":1234\r\n",
-					ty: resp3.TypeNumber,
-				},
-				{
-					in:  ":1234.5678\r\n",
-					err: resp3.ErrInvalidNumber,
-				},
-				{
-					in:   ":1234\r\n+OK\r\n",
-					ty:   resp3.TypeNumber,
-					rest: "+OK\r\n",
-				},
-				{
-					in:     ":1234\r\n+OK\r\n",
-					nested: true,
-					ty:     resp3.TypeNumber,
-					rest:   "+OK\r\n",
-				},
-			},
-		},
-		{
-			name: "Null",
-			tests: []test{
-				{
-					in:  "_",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in: "_\r\n",
-					ty: resp3.TypeNull,
-				},
-				{
-					in:   "_\r\n+OK\r\n",
-					ty:   resp3.TypeNull,
-					rest: "+OK\r\n",
-				},
-				{
-					in:     "_\r\n+OK\r\n",
-					ty:     resp3.TypeNull,
-					nested: true,
-					rest:   "+OK\r\n",
-				},
-			},
-		},
-		{
-			name: "Push",
-			tests: []test{
-				{
-					in:  ">0",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  ">-1\r\n",
-					err: resp3.ErrInvalidAggregateTypeLength,
-				},
-				{
-					in: ">0\r\n",
-					ty: resp3.TypePush,
-				},
-				{
-					in: ">1\r\n",
-					ty: resp3.TypePush,
-				},
-				{
-					in:   ">1\r\n+OK\r\n",
-					ty:   resp3.TypePush,
-					rest: "+OK\r\n",
-				},
-				{
-					in:     ">1\r\n+OK\r\n",
-					nested: true,
-					ty:     resp3.TypePush,
-				},
-				{
-					in:     ">1\r\n+OK\r\n-ERR\r\n",
-					nested: true,
-					ty:     resp3.TypePush,
-					rest:   "-ERR\r\n",
-				},
-				{
-					in:     ">2\r\n+OK\r\n",
-					nested: true,
-					err:    resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:     ">1\r\n>2\r\n+OK\r\n-ERR\r\n",
-					nested: true,
-					ty:     resp3.TypePush,
-				},
-			},
-		},
-		{
-			name: "Set",
-			tests: []test{
-				{
-					in:  "~0",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  "~-1\r\n",
-					err: resp3.ErrInvalidAggregateTypeLength,
-				},
-				{
-					in: "~0\r\n",
-					ty: resp3.TypeSet,
-				},
-				{
-					in: "~1\r\n",
-					ty: resp3.TypeSet,
-				},
-				{
-					in:   "~1\r\n+OK\r\n",
-					ty:   resp3.TypeSet,
-					rest: "+OK\r\n",
-				},
-				{
-					in:     "~1\r\n+OK\r\n",
-					nested: true,
-					ty:     resp3.TypeSet,
-				},
-				{
-					in:     "~1\r\n+OK\r\n-ERR\r\n",
-					nested: true,
-					ty:     resp3.TypeSet,
-					rest:   "-ERR\r\n",
-				},
-				{
-					in:     "~2\r\n+OK\r\n",
-					nested: true,
-					err:    resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:     "~1\r\n~2\r\n+OK\r\n-ERR\r\n",
-					nested: true,
-					ty:     resp3.TypeSet,
-				},
-			},
-		},
-		{
-			name: "SimpleError",
-			tests: []test{
-				{
-					in:  "-",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in: "-\r\n",
-					ty: resp3.TypeSimpleError,
-				},
-				{
-					in: "-ERR something went wrong\r\n",
-					ty: resp3.TypeSimpleError,
-				},
-				{
-					in:   "-ERR something went wrong\r\n+OK\r\n",
-					ty:   resp3.TypeSimpleError,
-					rest: "+OK\r\n",
-				},
-				{
-					in:     "-ERR something went wrong\r\n+OK\r\n",
-					nested: true,
-					ty:     resp3.TypeSimpleError,
-					rest:   "+OK\r\n",
-				},
-				{
-					in:  "-ERR" + strings.Repeat("a", resp3.DefaultSingleReadSizeLimit) + "\r\n",
-					err: resp3.ErrSingleReadSizeLimitExceeded,
-				},
-				{
-					in:    "-ERR hello world\r\n",
-					limit: 5,
-					err:   resp3.ErrSingleReadSizeLimitExceeded,
-				},
-			},
-		},
-		{
-			name: "SimpleString",
-			tests: []test{
-				{
-					in:  "+",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in: "+\r\n",
-					ty: resp3.TypeSimpleString,
-				},
-				{
-					in: "+OK something went right\r\n",
-					ty: resp3.TypeSimpleString,
-				},
-				{
-					in:   "+OK something went right\r\n+OK\r\n",
-					ty:   resp3.TypeSimpleString,
-					rest: "+OK\r\n",
-				},
-				{
-					in:     "+OK something went right\r\n+OK\r\n",
-					nested: true,
-					ty:     resp3.TypeSimpleString,
-					rest:   "+OK\r\n",
-				},
-				{
-					in:  "+OK" + strings.Repeat("a", resp3.DefaultSingleReadSizeLimit) + "\r\n",
-					err: resp3.ErrSingleReadSizeLimitExceeded,
-				},
-				{
-					in:    "+OK hello world\r\n",
-					limit: 5,
-					err:   resp3.ErrSingleReadSizeLimitExceeded,
-				},
-			},
-		},
-		{
-			name: "VerbatimString",
-			tests: []test{
-				{
-					in:  "=",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  "=\r\n",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  "=0\r\n",
-					err: resp3.ErrUnexpectedEOL,
-				},
-				{
-					in:  "=0\r\n\r\n",
-					err: resp3.ErrInvalidVerbatimString,
-				},
-				{
-					in:  "=-1\r\n",
-					err: resp3.ErrInvalidBlobLength,
-				},
-				{
-					in:  "=2\r\nhe\r\n",
-					err: resp3.ErrInvalidVerbatimString,
-				},
-				{
-					in:  "=5\r\nhello\r\n",
-					err: resp3.ErrInvalidVerbatimString,
-				},
-				{
-					in: "=5\r\nhel:o\r\n",
-					ty: resp3.TypeVerbatimString,
-				},
-				{
-					in:   "=5\r\nhel:o\r\n+OK\r\n",
-					ty:   resp3.TypeVerbatimString,
-					rest: "+OK\r\n",
-				},
-				{
-					in:     "=5\r\nhel:o\r\n+OK\r\n",
-					nested: true,
-					ty:     resp3.TypeVerbatimString,
-					rest:   "+OK\r\n",
-				},
-				{
-					in:  "=?\r\n",
-					err: resp3.ErrInvalidNumber,
-				},
-				{
-					in:  "=1234567890\r\n",
-					err: resp3.ErrSingleReadSizeLimitExceeded,
-				},
-				{
-					in:    "=6\r\n",
-					limit: 5,
-					err:   resp3.ErrSingleReadSizeLimitExceeded,
-				},
-			},
-		},
-	} {
-		group := group
-		t.Run(group.name, func(t *testing.T) {
-			for _, test := range group.tests {
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			for _, test := range discardTests[name] {
 				br := bufio.NewReader(strings.NewReader(test.in))
 
 				rr := resp3.NewReader(br)
@@ -1902,7 +1816,7 @@ func TestReaderDiscard(t *testing.T) {
 				assertError(t, test.err, err)
 
 				if test.err == nil {
-					rest, _ := ioutil.ReadAll(br)
+					rest, _ := io.ReadAll(br)
 					if string(rest) != test.rest {
 						t.Errorf("got %q left in input, expected %q", string(rest), test.rest)
 					}
@@ -1910,4 +1824,202 @@ func TestReaderDiscard(t *testing.T) {
 			}
 		})
 	}
+}
+
+func fuzzAdd(f *testing.F, name string) {
+	tests := discardTests[name]
+	if len(tests) == 0 {
+		panic("no tests found for name " + name)
+	}
+	for _, test := range tests {
+		f.Add([]byte(test.in))
+	}
+}
+
+func FuzzReader_Array(f *testing.F) {
+	fuzzAdd(f, "Array")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_, _, _ = rr.ReadArrayHeader()
+	})
+}
+
+func FuzzReader_Attribute(f *testing.F) {
+	fuzzAdd(f, "Attribute")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_, _, _ = rr.ReadAttributeHeader()
+	})
+}
+
+func FuzzReader_BigNumber(f *testing.F) {
+	fuzzAdd(f, "BigNumber")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_ = rr.ReadBigNumber(new(big.Int))
+	})
+}
+
+func FuzzReader_Boolean(f *testing.F) {
+	fuzzAdd(f, "Boolean")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_, _ = rr.ReadBoolean()
+	})
+}
+
+func FuzzReader_Double(f *testing.F) {
+	fuzzAdd(f, "Double")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_, _ = rr.ReadDouble()
+	})
+}
+
+func FuzzReader_BlobError(f *testing.F) {
+	fuzzAdd(f, "BlobError")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_, _, _ = rr.ReadBlobError(nil)
+	})
+}
+
+func FuzzReader_BlobString(f *testing.F) {
+	fuzzAdd(f, "BlobString")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_, _, _ = rr.ReadBlobString(nil)
+	})
+}
+
+func FuzzReader_BlobChunk(f *testing.F) {
+	fuzzAdd(f, "BlobChunk")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_, _, _ = rr.ReadBlobChunk(nil)
+	})
+}
+
+func FuzzReader_BlobChunks(f *testing.F) {
+	fuzzAdd(f, "BlobChunk")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_, _ = rr.ReadBlobChunks(nil)
+	})
+}
+
+func FuzzReader_End(f *testing.F) {
+	fuzzAdd(f, "End")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_ = rr.ReadEnd()
+	})
+}
+
+func FuzzReader_Map(f *testing.F) {
+	fuzzAdd(f, "Map")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_, _, _ = rr.ReadMapHeader()
+	})
+}
+
+func FuzzReader_Number(f *testing.F) {
+	fuzzAdd(f, "Number")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_, _ = rr.ReadNumber()
+	})
+}
+
+func FuzzReader_Null(f *testing.F) {
+	fuzzAdd(f, "Null")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_ = rr.ReadNull()
+	})
+}
+
+func FuzzReader_Push(f *testing.F) {
+	fuzzAdd(f, "Push")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_, _, _ = rr.ReadPushHeader()
+	})
+}
+
+func FuzzReader_Set(f *testing.F) {
+	fuzzAdd(f, "Set")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_, _, _ = rr.ReadSetHeader()
+	})
+}
+
+func FuzzReader_SimpleError(f *testing.F) {
+	fuzzAdd(f, "SimpleError")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_, _ = rr.ReadSimpleError(nil)
+	})
+}
+
+func FuzzReader_SimpleString(f *testing.F) {
+	fuzzAdd(f, "SimpleString")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_, _ = rr.ReadSimpleString(nil)
+	})
+}
+
+func FuzzReader_VerbatimString(f *testing.F) {
+	fuzzAdd(f, "VerbatimString")
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_, _ = rr.ReadVerbatimString(nil)
+	})
+}
+
+func FuzzReader_Discard(f *testing.F) {
+	for _, tests := range discardTests {
+		for _, test := range tests {
+			f.Add([]byte(test.in))
+		}
+	}
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_, _ = rr.Discard(false)
+	})
+}
+
+func FuzzReader_DiscardNested(f *testing.F) {
+	for _, tests := range discardTests {
+		for _, test := range tests {
+			f.Add([]byte(test.in))
+		}
+	}
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_, _ = rr.Discard(false)
+	})
 }
