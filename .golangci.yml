@@ -1,11 +1,107 @@
-run:
-  build-tags:
-  - integration
-  skip-files:
-    - _test.go$
+version: "2"
 linters:
-  enable-all: true
-  disable:
-    - gochecknoglobals
-    - gocognit
-    - wsl
+  default: none
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - canonicalheader
+    - containedctx
+    - contextcheck
+    - copyloopvar
+    - decorder
+    - dupword
+    - durationcheck
+    - errcheck
+    - errchkjson
+    - errorlint
+    - exhaustive
+    - exptostd
+    - fatcontext
+    - gocheckcompilerdirectives
+    - gocritic
+    - godot
+    - godox
+    - goheader
+    - goprintffuncname
+    - gosec
+    - gosmopolitan
+    - govet
+    - grouper
+    - iface
+    - importas
+    - inamedparam
+    - ineffassign
+    - interfacebloat
+    - intrange
+    - lll
+    - loggercheck
+    - makezero
+    - mirror
+    - misspell
+    # - mnd
+    - musttag
+    - nestif
+    - nilerr
+    - nilnesserr
+    - noctx
+    - nolintlint
+    - nosprintfhostport
+    - perfsprint
+    - prealloc
+    - predeclared
+    - promlinter
+    - protogetter
+    - reassign
+    - recvcheck
+    - revive
+    - rowserrcheck
+    - sloglint
+    - spancheck
+    - sqlclosecheck
+    - staticcheck
+    - tagalign
+    - tagliatelle
+    - testableexamples
+    - testifylint
+    - testpackage
+    # - thelper
+    - tparallel
+    - unconvert
+    - unused
+    - usetesting
+    - wastedassign
+    - whitespace
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gci
+    - gofumpt
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/nussjustin/resp3)
+        - blank
+        - dot
+        - alias
+        - localmodule
+      custom-order: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

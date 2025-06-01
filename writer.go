@@ -138,8 +138,10 @@ func (rw *Writer) WriteBlobString(s []byte) error {
 	return rw.writeBlob(TypeBlobString, s)
 }
 
-var boolFalseBytes = []byte("#f\r\n")
-var boolTrueBytes = []byte("#t\r\n")
+var (
+	boolFalseBytes = []byte("#f\r\n")
+	boolTrueBytes  = []byte("#t\r\n")
+)
 
 // WriteBoolean writes the boolean b using the RESP boolean type.
 func (rw *Writer) WriteBoolean(b bool) error {
@@ -151,8 +153,10 @@ func (rw *Writer) WriteBoolean(b bool) error {
 	return err
 }
 
-var doubleInfBytes = []byte(",inf\r\n")
-var doubleNegativeInfBytes = []byte(",-inf\r\n")
+var (
+	doubleInfBytes         = []byte(",inf\r\n")
+	doubleNegativeInfBytes = []byte(",-inf\r\n")
+)
 
 // WriteDouble writes the number f using the RESP double type.
 func (rw *Writer) WriteDouble(f float64) error {

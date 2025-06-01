@@ -89,7 +89,7 @@ func TestReaderPeek(t *testing.T) {
 func benchmarkPeek(in string) func(*testing.B) {
 	return func(b *testing.B) {
 		rr, reset := newTestReader(in)
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			reset(in)
 			_, _ = rr.Peek()
 		}
@@ -272,7 +272,11 @@ func runBlobReadTest(t *testing.T, ty resp3.Type, readBlob func(*resp3.Reader, [
 	}
 }
 
-func runStreamableBlobReadTest(t *testing.T, ty resp3.Type, readBlob func(*resp3.Reader, []byte) ([]byte, bool, error)) {
+func runStreamableBlobReadTest(
+	t *testing.T,
+	ty resp3.Type,
+	readBlob func(*resp3.Reader, []byte) ([]byte, bool, error),
+) {
 	runBlobReadTest(t, ty, readBlob)
 
 	p := newTypePrefixFunc(ty)
@@ -432,12 +436,18 @@ func testReadBigNumber(t *testing.T) {
 		{in: p("0\r\n"), n: big.NewInt(0)},
 		{in: p("1\r\n"), n: big.NewInt(1)},
 		{in: p("10\r\n"), n: big.NewInt(10)},
-		{in: p("-123456789123456789123456789123456789\r\n"),
-			n: newBigInt("-123456789123456789123456789123456789")},
-		{in: p("123456789123456789123456789123456789\r\n"),
-			n: newBigInt("123456789123456789123456789123456789")},
-		{in: p("+123456789123456789123456789123456789\r\n"),
-			n: newBigInt("123456789123456789123456789123456789")},
+		{
+			in: p("-123456789123456789123456789123456789\r\n"),
+			n:  newBigInt("-123456789123456789123456789123456789"),
+		},
+		{
+			in: p("123456789123456789123456789123456789\r\n"),
+			n:  newBigInt("123456789123456789123456789123456789"),
+		},
+		{
+			in: p("+123456789123456789123456789123456789\r\n"),
+			n:  newBigInt("123456789123456789123456789123456789"),
+		},
 		{in: p("+1\r\n"), n: big.NewInt(1)},
 
 		{in: p("A\r\n"), err: resp3.ErrInvalidBigNumber},
@@ -843,7 +853,7 @@ func makeReadAggregationBenchmark(ty resp3.Type, readHeader func(*resp3.Reader) 
 		b.Run("Fixed", func(b *testing.B) {
 			in := string(ty) + "16\r\n"
 			rr, reset := newTestReader(in)
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				reset(in)
 				_, _, _ = readHeader(rr)
 			}
@@ -852,7 +862,7 @@ func makeReadAggregationBenchmark(ty resp3.Type, readHeader func(*resp3.Reader) 
 		b.Run("Streamed", func(b *testing.B) {
 			in := string(ty) + "?\r\n"
 			rr, reset := newTestReader(in)
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				reset(in)
 				_, _, _ = readHeader(rr)
 			}
@@ -866,7 +876,7 @@ func makeReadBlobBenchmark(ty resp3.Type, readBlob func(*resp3.Reader, []byte) (
 			var buf [32]byte
 			in := string(ty) + "32\r\nhello world! what's up? kthxbye!\r\n"
 			rr, reset := newTestReader(in)
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				reset(in)
 				_, _, _ = readBlob(rr, buf[:0])
 			}
@@ -875,7 +885,7 @@ func makeReadBlobBenchmark(ty resp3.Type, readBlob func(*resp3.Reader, []byte) (
 		b.Run("Streamed", func(b *testing.B) {
 			in := string(ty) + "?\r\n"
 			rr, reset := newTestReader(in)
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				reset(in)
 				_, _, _ = readBlob(rr, nil)
 			}
@@ -888,7 +898,7 @@ func makeReadSimpleBenchmark(ty resp3.Type, readSimple func(*resp3.Reader, []byt
 		var buf [32 + len("\r\n")]byte
 		in := string(ty) + "hello world! what's up? kthxbye!\r\n"
 		rr, reset := newTestReader(in)
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			reset(in)
 			_, _ = readSimple(rr, buf[:0])
 		}
@@ -899,7 +909,7 @@ func benchmarkReadBigNumber(b *testing.B) {
 	in := string(resp3.TypeBigNumber) + "123456789123456789123456789123456789\r\n"
 	rr, reset := newTestReader(in)
 	n := new(big.Int)
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		reset(in)
 		_ = rr.ReadBigNumber(n)
 	}
@@ -908,7 +918,7 @@ func benchmarkReadBigNumber(b *testing.B) {
 func benchmarkReadBoolean(b *testing.B) {
 	in := string(resp3.TypeBoolean) + "t\r\n"
 	rr, reset := newTestReader(in)
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		reset(in)
 		_, _ = rr.ReadBoolean()
 	}
@@ -917,7 +927,7 @@ func benchmarkReadBoolean(b *testing.B) {
 func benchmarkReadDouble(b *testing.B) {
 	in := string(resp3.TypeDouble) + "1234.5678\r\n"
 	rr, reset := newTestReader(in)
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		reset(in)
 		_, _ = rr.ReadDouble()
 	}
@@ -928,7 +938,7 @@ func benchmarkReadBlobChunk(b *testing.B) {
 		var buf [32]byte
 		in := string(resp3.TypeBlobChunk) + "32\r\nhello world! what's up? kthxbye!\r\n"
 		rr, reset := newTestReader(in)
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			reset(in)
 			_, _, _ = rr.ReadBlobChunk(buf[:0])
 		}
@@ -937,7 +947,7 @@ func benchmarkReadBlobChunk(b *testing.B) {
 	b.Run("End", func(b *testing.B) {
 		in := string(resp3.TypeBlobChunk) + "0\r\n"
 		rr, reset := newTestReader(in)
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			reset(in)
 			_, _, _ = rr.ReadBlobChunk(nil)
 		}
@@ -954,7 +964,7 @@ func benchmarkReadBlobChunks(b *testing.B) {
 		string(resp3.TypeBlobChunk) + "8\r\nkthxbye!\r\n" +
 		string(resp3.TypeBlobChunk) + "0\r\n"
 	rr, reset := newTestReader(in)
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		reset(in)
 		_, _ = rr.ReadBlobChunks(buf[:0])
 	}
@@ -963,7 +973,7 @@ func benchmarkReadBlobChunks(b *testing.B) {
 func benchmarkReadEnd(b *testing.B) {
 	in := string(resp3.TypeEnd) + "\r\n"
 	rr, reset := newTestReader(in)
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		reset(in)
 		_ = rr.ReadEnd()
 	}
@@ -973,7 +983,7 @@ func benchmarkReadNull(b *testing.B) {
 	makeBench := func(in string) func(*testing.B) {
 		return func(b *testing.B) {
 			rr, reset := newTestReader(in)
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				reset(in)
 				_ = rr.ReadNull()
 			}
@@ -987,7 +997,7 @@ func benchmarkReadNull(b *testing.B) {
 func benchmarkReadNumber(b *testing.B) {
 	in := string(resp3.TypeNumber) + "12345678\r\n"
 	rr, reset := newTestReader(in)
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		reset(in)
 		_, _ = rr.ReadNumber()
 	}
@@ -997,7 +1007,7 @@ func benchmarkReadVerbatimString(b *testing.B) {
 	var buf [36]byte
 	in := string(resp3.TypeVerbatimString) + "36\r\ntxt:hello world! what's up? kthxbye!\r\n"
 	rr, reset := newTestReader(in)
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		reset(in)
 		_, _ = rr.ReadVerbatimString(buf[:0])
 	}
@@ -1839,7 +1849,7 @@ func fuzzAdd(f *testing.F, name string) {
 func FuzzReader_Array(f *testing.F) {
 	fuzzAdd(f, "Array")
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_, _, _ = rr.ReadArrayHeader()
 	})
@@ -1848,7 +1858,7 @@ func FuzzReader_Array(f *testing.F) {
 func FuzzReader_Attribute(f *testing.F) {
 	fuzzAdd(f, "Attribute")
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_, _, _ = rr.ReadAttributeHeader()
 	})
@@ -1857,7 +1867,7 @@ func FuzzReader_Attribute(f *testing.F) {
 func FuzzReader_BigNumber(f *testing.F) {
 	fuzzAdd(f, "BigNumber")
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_ = rr.ReadBigNumber(new(big.Int))
 	})
@@ -1866,7 +1876,7 @@ func FuzzReader_BigNumber(f *testing.F) {
 func FuzzReader_Boolean(f *testing.F) {
 	fuzzAdd(f, "Boolean")
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_, _ = rr.ReadBoolean()
 	})
@@ -1875,7 +1885,7 @@ func FuzzReader_Boolean(f *testing.F) {
 func FuzzReader_Double(f *testing.F) {
 	fuzzAdd(f, "Double")
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_, _ = rr.ReadDouble()
 	})
@@ -1884,7 +1894,7 @@ func FuzzReader_Double(f *testing.F) {
 func FuzzReader_BlobError(f *testing.F) {
 	fuzzAdd(f, "BlobError")
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_, _, _ = rr.ReadBlobError(nil)
 	})
@@ -1893,7 +1903,7 @@ func FuzzReader_BlobError(f *testing.F) {
 func FuzzReader_BlobString(f *testing.F) {
 	fuzzAdd(f, "BlobString")
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_, _, _ = rr.ReadBlobString(nil)
 	})
@@ -1902,7 +1912,7 @@ func FuzzReader_BlobString(f *testing.F) {
 func FuzzReader_BlobChunk(f *testing.F) {
 	fuzzAdd(f, "BlobChunk")
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_, _, _ = rr.ReadBlobChunk(nil)
 	})
@@ -1911,7 +1921,7 @@ func FuzzReader_BlobChunk(f *testing.F) {
 func FuzzReader_BlobChunks(f *testing.F) {
 	fuzzAdd(f, "BlobChunk")
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_, _ = rr.ReadBlobChunks(nil)
 	})
@@ -1920,7 +1930,7 @@ func FuzzReader_BlobChunks(f *testing.F) {
 func FuzzReader_End(f *testing.F) {
 	fuzzAdd(f, "End")
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_ = rr.ReadEnd()
 	})
@@ -1929,7 +1939,7 @@ func FuzzReader_End(f *testing.F) {
 func FuzzReader_Map(f *testing.F) {
 	fuzzAdd(f, "Map")
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_, _, _ = rr.ReadMapHeader()
 	})
@@ -1938,7 +1948,7 @@ func FuzzReader_Map(f *testing.F) {
 func FuzzReader_Number(f *testing.F) {
 	fuzzAdd(f, "Number")
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_, _ = rr.ReadNumber()
 	})
@@ -1947,7 +1957,7 @@ func FuzzReader_Number(f *testing.F) {
 func FuzzReader_Null(f *testing.F) {
 	fuzzAdd(f, "Null")
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_ = rr.ReadNull()
 	})
@@ -1956,7 +1966,7 @@ func FuzzReader_Null(f *testing.F) {
 func FuzzReader_Push(f *testing.F) {
 	fuzzAdd(f, "Push")
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_, _, _ = rr.ReadPushHeader()
 	})
@@ -1965,7 +1975,7 @@ func FuzzReader_Push(f *testing.F) {
 func FuzzReader_Set(f *testing.F) {
 	fuzzAdd(f, "Set")
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_, _, _ = rr.ReadSetHeader()
 	})
@@ -1974,7 +1984,7 @@ func FuzzReader_Set(f *testing.F) {
 func FuzzReader_SimpleError(f *testing.F) {
 	fuzzAdd(f, "SimpleError")
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_, _ = rr.ReadSimpleError(nil)
 	})
@@ -1983,7 +1993,7 @@ func FuzzReader_SimpleError(f *testing.F) {
 func FuzzReader_SimpleString(f *testing.F) {
 	fuzzAdd(f, "SimpleString")
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_, _ = rr.ReadSimpleString(nil)
 	})
@@ -1992,7 +2002,7 @@ func FuzzReader_SimpleString(f *testing.F) {
 func FuzzReader_VerbatimString(f *testing.F) {
 	fuzzAdd(f, "VerbatimString")
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_, _ = rr.ReadVerbatimString(nil)
 	})
@@ -2005,7 +2015,7 @@ func FuzzReader_Discard(f *testing.F) {
 		}
 	}
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_, _ = rr.Discard(false)
 	})
@@ -2018,7 +2028,7 @@ func FuzzReader_DiscardNested(f *testing.F) {
 		}
 	}
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_, _ = rr.Discard(false)
 	})

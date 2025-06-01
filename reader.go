@@ -11,7 +11,7 @@ import (
 
 // Reader wraps an io.Reader and provides methods for reading the RESP protocol.
 type Reader struct {
-	// SingleReadSizeLimit defines the maximum size of blobs (either errors, strings or chunks) that can can be read,
+	// SingleReadSizeLimit defines the maximum size of blobs (either errors, strings or chunks) that can be read,
 	// excluding the type, line endings and, in case of blobs, the size. If the Reader encounters a value larger than
 	// this limit, an error wrapping ErrSingleReadSizeLimitExceeded will be returned.
 	// If SingleReadSizeLimit is 0, DefaultSingleReadSizeLimit is used instead.
@@ -581,6 +581,7 @@ func (rr *Reader) Discard(nested bool) (Type, error) {
 	}
 
 	switch t {
+	case TypeInvalid:
 	case TypeArray, TypeAttribute, TypeMap, TypePush, TypeSet:
 		err = rr.discardAggregate(t, nested)
 	case TypeBlobError, TypeBlobString:

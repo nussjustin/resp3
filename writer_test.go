@@ -103,7 +103,8 @@ func newTestWriter(t *testing.T) (rw *resp3.Writer, assert func(expected string,
 
 func makeWriteAggregationTest(ty resp3.Type,
 	writeHeader func(*resp3.Writer, int64) error,
-	writeStreamHeader func(*resp3.Writer) error) func(t *testing.T) {
+	writeStreamHeader func(*resp3.Writer) error,
+) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Run("Fixed", func(t *testing.T) {
 			rw, assert := newTestWriter(t)

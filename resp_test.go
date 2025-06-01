@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/big"
 	"strconv"
 	"strings"
@@ -37,7 +36,8 @@ func assertError(tb testing.TB, expected, actual error) {
 func makeCopyAggregateFunc(name string,
 	readHeader func(*resp3.Reader) (int64, bool, error),
 	writeHeader func(*resp3.Writer, int64) error,
-	writeStreamHeader func(*resp3.Writer) error) func(testing.TB, *resp3.ReadWriter, []byte) {
+	writeStreamHeader func(*resp3.Writer) error,
+) func(testing.TB, *resp3.ReadWriter, []byte) {
 	return func(tb testing.TB, rw *resp3.ReadWriter, _ []byte) {
 		n, chunked, err := readHeader(&rw.Reader)
 		if err != nil {
@@ -58,7 +58,8 @@ func makeCopyAggregateFunc(name string,
 func makeCopyBlobFunc(name string,
 	read func(*resp3.Reader, []byte) ([]byte, bool, error),
 	write func(*resp3.Writer, []byte) error,
-	writeStreamHeader func(*resp3.Writer) error) func(testing.TB, *resp3.ReadWriter, []byte) {
+	writeStreamHeader func(*resp3.Writer) error,
+) func(testing.TB, *resp3.ReadWriter, []byte) {
 	return func(tb testing.TB, rw *resp3.ReadWriter, buf []byte) {
 		s, chunked, err := read(&rw.Reader, buf)
 		if err != nil {
@@ -74,11 +75,11 @@ func makeCopyBlobFunc(name string,
 			tb.Fatalf("failed to write %s stream header: %s", name, err)
 		}
 		for {
-			b, last, err := rw.Reader.ReadBlobChunk(nil)
+			b, last, err := rw.ReadBlobChunk(nil)
 			if err != nil {
 				tb.Fatalf("failed to read %s chunk: %s", name, err)
 			}
-			if err := rw.Writer.WriteBlobChunk(b); err != nil {
+			if err := rw.WriteBlobChunk(b); err != nil {
 				tb.Fatalf("failed to write %s chunk: %s", name, err)
 			}
 			if last {
@@ -90,7 +91,8 @@ func makeCopyBlobFunc(name string,
 
 func makeCopySimpleFunc(name string,
 	read func(*resp3.Reader, []byte) ([]byte, error),
-	write func(*resp3.Writer, []byte) error) func(testing.TB, *resp3.ReadWriter, []byte) {
+	write func(*resp3.Writer, []byte) error,
+) func(testing.TB, *resp3.ReadWriter, []byte) {
 	return func(tb testing.TB, rw *resp3.ReadWriter, buf []byte) {
 		s, err := read(&rw.Reader, buf)
 		if err != nil {
@@ -103,7 +105,7 @@ func makeCopySimpleFunc(name string,
 }
 
 var copyFuncs = [255]func(testing.TB, *resp3.ReadWriter, []byte){
-	resp3.TypeInvalid: func(tb testing.TB, rw *resp3.ReadWriter, _ []byte) { tb.Fatal("found invalid type") },
+	resp3.TypeInvalid: func(tb testing.TB, _ *resp3.ReadWriter, _ []byte) { tb.Fatal("found invalid type") },
 	resp3.TypeArray: makeCopyAggregateFunc("array",
 		(*resp3.Reader).ReadArrayHeader,
 		(*resp3.Writer).WriteArrayHeader,
@@ -245,7 +247,7 @@ type simpleReadWriter struct {
 	io.Writer
 }
 
-var testReadWriterInput = strings.Replace(`+
+var testReadWriterInput = strings.ReplaceAll(`+
 +OK
 +OK hello world
 -
@@ -299,7 +301,7 @@ world
 |?
 ~?
 >?
-`, "\n", "\r\n", -1)
+`, "\n", "\r\n")
 
 func TestReadWriter(t *testing.T) {
 	var out bytes.Buffer
@@ -322,7 +324,7 @@ func BenchmarkReadWriter(b *testing.B) {
 	in := strings.NewReader(testReadWriterInput)
 	srw := &simpleReadWriter{
 		Reader: in,
-		Writer: ioutil.Discard,
+		Writer: io.Discard,
 	}
 
 	rw := resp3.NewReadWriter(nil)
@@ -333,7 +335,7 @@ func BenchmarkReadWriter(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		in.Reset(testReadWriterInput)
 		rw.Reset(srw)
 

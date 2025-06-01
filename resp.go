@@ -29,7 +29,7 @@ var (
 	ErrInvalidNumber = errors.New("invalid number")
 
 	// ErrInvalidSimpleValue is returned when decoding or encoding a simple error/string that contains either \r or \n.
-	ErrInvalidSimpleValue = errors.New("simple errors/strings must not contain \r or \n or both")
+	ErrInvalidSimpleValue = errors.New("simple errors/strings must not contain \r, \n or both")
 
 	// ErrInvalidType is returned when decoding an unknown type.
 	ErrInvalidType = errors.New("invalid type")
@@ -41,7 +41,7 @@ var (
 	// ErrOverflow is returned when decoding a number that overflows or underflows an int64.
 	ErrOverflow = errors.New("number overflowed")
 
-	// ErrUnexpectedEOL is returned when reading a line that does not end in \r.\n
+	// ErrUnexpectedEOL is returned when reading a line that does not end in \r\n.
 	ErrUnexpectedEOL = errors.New("unexpected EOL")
 
 	// ErrUnexpectedType is returned by Reader when encountering an unknown type.
