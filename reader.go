@@ -168,7 +168,7 @@ func (rr *Reader) readDouble() (float64, error) {
 	return f, nil
 }
 
-func (rr *Reader) readNumber() (int64, error) {
+func (rr *Reader) readInteger() (int64, error) {
 	var i int
 	var n int64
 	var neg bool
@@ -224,7 +224,7 @@ func (rr *Reader) readBlob(t Type, dst []byte) ([]byte, error) {
 	if err := rr.expect(t); err != nil {
 		return nil, err
 	}
-	n, err := rr.readNumber()
+	n, err := rr.readInteger()
 	if err != nil {
 		return nil, err
 	}
@@ -293,7 +293,7 @@ func (rr *Reader) readAggregateHeader(t Type) (int64, bool, error) {
 	if err := rr.expect(t); err != nil {
 		return 0, false, err
 	}
-	n, err := rr.readNumber()
+	n, err := rr.readInteger()
 	if n < 0 || errors.Is(err, ErrInvalidNumber) {
 		n, err = 0, ErrInvalidAggregateTypeLength
 	}
@@ -420,6 +420,16 @@ func (rr *Reader) ReadEnd() error {
 	return rr.readEOL()
 }
 
+// ReadInteger reads an integer.
+//
+// If the next type in the response is not integer, ErrUnexpectedType is returned.
+func (rr *Reader) ReadInteger() (int64, error) {
+	if err := rr.expect(TypeInteger); err != nil {
+		return 0, err
+	}
+	return rr.readInteger()
+}
+
 // ReadMapHeader reads a map header, returning the map size.
 //
 // If the array is chunked, n will be set to -1 and chunked will be set to true.
@@ -449,16 +459,6 @@ func (rr *Reader) ReadNull() error {
 		return err
 	}
 	return rr.readEOL()
-}
-
-// ReadNumber reads a number.
-//
-// If the next type in the response is not number, ErrUnexpectedType is returned.
-func (rr *Reader) ReadNumber() (int64, error) {
-	if err := rr.expect(TypeNumber); err != nil {
-		return 0, err
-	}
-	return rr.readNumber()
 }
 
 // ReadPushHeader reads a push header, returning the push size.
@@ -607,8 +607,8 @@ func (rr *Reader) Discard(nested bool) (Type, error) {
 		_, err = rr.ReadDouble()
 	case TypeEnd:
 		err = rr.ReadEnd()
-	case TypeNumber:
-		_, err = rr.ReadNumber()
+	case TypeInteger:
+		_, err = rr.ReadInteger()
 	case TypeNull:
 		err = rr.ReadNull()
 	case TypeVerbatimString:

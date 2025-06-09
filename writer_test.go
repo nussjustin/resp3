@@ -290,7 +290,7 @@ func testWriteNumber(t *testing.T) {
 		{100, ":100\r\n"},
 		{1000, ":1000\r\n"},
 	} {
-		assert(c.s, nil, rw.WriteNumber(c.i))
+		assert(c.s, nil, rw.WriteInteger(c.i))
 	}
 }
 

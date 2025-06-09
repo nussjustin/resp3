@@ -183,6 +183,11 @@ func (rw *Writer) WriteEnd() error {
 	return err
 }
 
+// WriteInteger writes the integer n using the RESP integer type.
+func (rw *Writer) WriteInteger(n int64) error {
+	return rw.writeNumber(TypeInteger, n)
+}
+
 // WriteMapHeader writes a map header for a map with n field-value items.
 //
 // If n is < 0, ErrInvalidAggregateTypeLength is returned.
@@ -201,11 +206,6 @@ var nullBytes = []byte("_\r\n")
 func (rw *Writer) WriteNull() error {
 	_, err := rw.w.Write(nullBytes)
 	return err
-}
-
-// WriteNumber writes the number i using the RESP integer type.
-func (rw *Writer) WriteNumber(n int64) error {
-	return rw.writeNumber(TypeNumber, n)
 }
 
 // WritePushHeader writes a push header for a push array with n items.

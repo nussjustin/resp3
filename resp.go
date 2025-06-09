@@ -72,12 +72,12 @@ const (
 	TypeBlobString Type = '$'
 	// TypeEnd is the RESP protocol type for stream ends.
 	TypeEnd Type = '.'
+	// TypeInteger is the RESP protocol type for 64-bit signed integers.
+	TypeInteger Type = ':'
 	// TypeMap is the RESP protocol type for maps.
 	TypeMap Type = '%'
 	// TypeNull is the RESP protocol type for null.
 	TypeNull Type = '_'
-	// TypeNumber is the RESP protocol type for numbers.
-	TypeNumber Type = ':'
 	// TypePush is the RESP protocol type for push data.
 	TypePush Type = '>'
 	// TypeSet is the RESP protocol type for sets.
@@ -102,8 +102,8 @@ var types = [256]Type{
 	TypeBlobString:     TypeBlobString,
 	TypeBlobChunk:      TypeBlobChunk,
 	TypeEnd:            TypeEnd,
+	TypeInteger:        TypeInteger,
 	TypeMap:            TypeMap,
-	TypeNumber:         TypeNumber,
 	TypeNull:           TypeNull,
 	TypePush:           TypePush,
 	TypeSet:            TypeSet,

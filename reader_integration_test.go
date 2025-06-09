@@ -89,7 +89,7 @@ func assertReadNull(tb testing.TB, r *resp3.Reader) {
 
 func assertReadNumber(tb testing.TB, r *resp3.Reader, n int64) {
 	tb.Helper()
-	assertReadNumberFunc(tb, "integer", r.ReadNumber, n)
+	assertReadNumberFunc(tb, "integer", r.ReadInteger, n)
 }
 
 func assertReadSimpleString(tb testing.TB, r *resp3.Reader, s []byte) {

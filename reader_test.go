@@ -47,8 +47,8 @@ func TestReaderPeek(t *testing.T) {
 		resp3.TypeBlobString:     true,
 		resp3.TypeBlobChunk:      true,
 		resp3.TypeEnd:            true,
+		resp3.TypeInteger:        true,
 		resp3.TypeMap:            true,
-		resp3.TypeNumber:         true,
 		resp3.TypeNull:           true,
 		resp3.TypePush:           true,
 		resp3.TypeSet:            true,
@@ -677,7 +677,7 @@ func testReadNull(t *testing.T) {
 }
 
 func testReadNumber(t *testing.T) {
-	p := newTypePrefixFunc(resp3.TypeNumber)
+	p := newTypePrefixFunc(resp3.TypeInteger)
 	for _, c := range []struct {
 		in  string
 		n   int64
@@ -716,7 +716,7 @@ func testReadNumber(t *testing.T) {
 		{in: p("184467440737095516151\r\n"), err: resp3.ErrOverflow},
 	} {
 		rr, _ := newTestReader(c.in)
-		n, err := rr.ReadNumber()
+		n, err := rr.ReadInteger()
 		assertError(t, c.err, err)
 		if n != c.n {
 			t.Errorf("got %d, expected %d", n, c.n)
@@ -847,9 +847,9 @@ func BenchmarkReaderRead(b *testing.B) {
 	b.Run("BlobChunk", benchmarkReadBlobChunk)
 	b.Run("BlobChunks", benchmarkReadBlobChunks)
 	b.Run("End", benchmarkReadEnd)
+	b.Run("Integer", benchmarkReadInteger)
 	b.Run("Map", makeReadAggregationBenchmark(resp3.TypeMap, (*resp3.Reader).ReadMapHeader))
 	b.Run("Null", benchmarkReadNull)
-	b.Run("Number", benchmarkReadNumber)
 	b.Run("Push", makeReadAggregationBenchmark(resp3.TypePush, (*resp3.Reader).ReadPushHeader))
 	b.Run("Set", makeReadAggregationBenchmark(resp3.TypeSet, (*resp3.Reader).ReadSetHeader))
 	b.Run("SimpleError", makeReadSimpleBenchmark(resp3.TypeSimpleError, (*resp3.Reader).ReadSimpleError))
@@ -988,6 +988,15 @@ func benchmarkReadEnd(b *testing.B) {
 	}
 }
 
+func benchmarkReadInteger(b *testing.B) {
+	in := string(resp3.TypeInteger) + "12345678\r\n"
+	rr, reset := newTestReader(in)
+	for b.Loop() {
+		reset(in)
+		_, _ = rr.ReadInteger()
+	}
+}
+
 func benchmarkReadNull(b *testing.B) {
 	makeBench := func(in string) func(*testing.B) {
 		return func(b *testing.B) {
@@ -1001,15 +1010,6 @@ func benchmarkReadNull(b *testing.B) {
 	b.Run("Native", makeBench(string(resp3.TypeNull)+"\r\n"))
 	b.Run("NilArray", makeBench(string(resp3.TypeArray)+"-1\r\n"))
 	b.Run("NilBLobString", makeBench(string(resp3.TypeBlobString)+"-1\r\n"))
-}
-
-func benchmarkReadNumber(b *testing.B) {
-	in := string(resp3.TypeNumber) + "12345678\r\n"
-	rr, reset := newTestReader(in)
-	for b.Loop() {
-		reset(in)
-		_, _ = rr.ReadNumber()
-	}
 }
 
 func benchmarkReadVerbatimString(b *testing.B) {
@@ -1496,6 +1496,39 @@ var discardTests = map[string][]discardTest{
 			rest:   "+OK\r\n",
 		},
 	},
+	"Integer": {
+		{
+			in:  ":",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  ":\r\n",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in:  ":1234",
+			err: resp3.ErrUnexpectedEOL,
+		},
+		{
+			in: ":1234\r\n",
+			ty: resp3.TypeInteger,
+		},
+		{
+			in:  ":1234.5678\r\n",
+			err: resp3.ErrInvalidNumber,
+		},
+		{
+			in:   ":1234\r\n+OK\r\n",
+			ty:   resp3.TypeInteger,
+			rest: "+OK\r\n",
+		},
+		{
+			in:     ":1234\r\n+OK\r\n",
+			nested: true,
+			ty:     resp3.TypeInteger,
+			rest:   "+OK\r\n",
+		},
+	},
 	"Map": {
 		{
 			in:  "%0",
@@ -1543,39 +1576,6 @@ var discardTests = map[string][]discardTest{
 			in:     "%1\r\n+KEY\r\n*2\r\n+OK\r\n-ERR\r\n",
 			nested: true,
 			ty:     resp3.TypeMap,
-		},
-	},
-	"Number": {
-		{
-			in:  ":",
-			err: resp3.ErrUnexpectedEOL,
-		},
-		{
-			in:  ":\r\n",
-			err: resp3.ErrUnexpectedEOL,
-		},
-		{
-			in:  ":1234",
-			err: resp3.ErrUnexpectedEOL,
-		},
-		{
-			in: ":1234\r\n",
-			ty: resp3.TypeNumber,
-		},
-		{
-			in:  ":1234.5678\r\n",
-			err: resp3.ErrInvalidNumber,
-		},
-		{
-			in:   ":1234\r\n+OK\r\n",
-			ty:   resp3.TypeNumber,
-			rest: "+OK\r\n",
-		},
-		{
-			in:     ":1234\r\n+OK\r\n",
-			nested: true,
-			ty:     resp3.TypeNumber,
-			rest:   "+OK\r\n",
 		},
 	},
 	"Null": {
@@ -1945,21 +1945,21 @@ func FuzzReader_End(f *testing.F) {
 	})
 }
 
+func FuzzReader_Integer(f *testing.F) {
+	fuzzAdd(f, "Integer")
+
+	f.Fuzz(func(_ *testing.T, data []byte) {
+		rr := resp3.NewReader(bytes.NewReader(data))
+		_, _ = rr.ReadInteger()
+	})
+}
+
 func FuzzReader_Map(f *testing.F) {
 	fuzzAdd(f, "Map")
 
 	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
 		_, _, _ = rr.ReadMapHeader()
-	})
-}
-
-func FuzzReader_Number(f *testing.F) {
-	fuzzAdd(f, "Number")
-
-	f.Fuzz(func(_ *testing.T, data []byte) {
-		rr := resp3.NewReader(bytes.NewReader(data))
-		_, _ = rr.ReadNumber()
 	})
 }
 

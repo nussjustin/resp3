@@ -166,19 +166,19 @@ var copyFuncs = [255]func(testing.TB, *resp3.ReadWriter, []byte){
 			tb.Fatalf("failed to write end: %s", err)
 		}
 	},
+	resp3.TypeInteger: func(tb testing.TB, rw *resp3.ReadWriter, _ []byte) {
+		n, err := rw.ReadInteger()
+		if err != nil {
+			tb.Fatalf("failed to read integer: %s", err)
+		}
+		if err := rw.WriteInteger(n); err != nil {
+			tb.Fatalf("failed to write integer %d: %s", n, err)
+		}
+	},
 	resp3.TypeMap: makeCopyAggregateFunc("map",
 		(*resp3.Reader).ReadMapHeader,
 		(*resp3.Writer).WriteMapHeader,
 		(*resp3.Writer).WriteMapStreamHeader),
-	resp3.TypeNumber: func(tb testing.TB, rw *resp3.ReadWriter, _ []byte) {
-		n, err := rw.ReadNumber()
-		if err != nil {
-			tb.Fatalf("failed to read number: %s", err)
-		}
-		if err := rw.WriteNumber(n); err != nil {
-			tb.Fatalf("failed to write number %d: %s", n, err)
-		}
-	},
 	resp3.TypeNull: func(tb testing.TB, rw *resp3.ReadWriter, _ []byte) {
 		if err := rw.ReadNull(); err != nil {
 			tb.Fatalf("failed to read null: %s", err)
