@@ -244,15 +244,10 @@ func (rw *Writer) WriteSimpleString(s []byte) error {
 	return rw.writeSimple(TypeSimpleString, s)
 }
 
-const verbatimPrefixLength = 3
-
 // WriteVerbatimString writes the byte slice s unvalidated as a verbatim string using p as prefix.
 //
 // If len(p) is not 3, ErrInvalidVerbatimString will be returned.
-func (rw *Writer) WriteVerbatimString(p []byte, s []byte) error {
-	if len(p) != verbatimPrefixLength {
-		return ErrInvalidVerbatimString
-	}
+func (rw *Writer) WriteVerbatimString(p [3]byte, s []byte) error {
 	rw.buf = append(rw.buf[:0], byte(TypeVerbatimString))
 	rw.buf = strconv.AppendInt(rw.buf, int64(len(p)+1+len(s)), 10)
 	rw.buf = append(rw.buf, '\r', '\n', p[0], p[1], p[2], ':')

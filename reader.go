@@ -491,7 +491,7 @@ func (rr *Reader) ReadSimpleString(b []byte) ([]byte, error) {
 	return rr.readSimple(TypeSimpleString, b)
 }
 
-// ReadVerbatimString reads a verbatim string into b, returning the resulting slice
+// ReadVerbatimString reads a verbatim string into b, returning the resulting slice.
 //
 // If the next type in the response is not simple string, ErrUnexpectedType is returned.
 func (rr *Reader) ReadVerbatimString(b []byte) ([]byte, error) {
@@ -500,6 +500,7 @@ func (rr *Reader) ReadVerbatimString(b []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	const verbatimPrefixLength = 3
 	if bs := b[oldLen:]; len(bs) < verbatimPrefixLength+1 || bs[verbatimPrefixLength] != ':' {
 		p := bs
 		if n := verbatimPrefixLength*verbatimPrefixLength + 1; len(p) >= n {

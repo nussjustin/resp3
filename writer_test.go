@@ -297,21 +297,16 @@ func testWriteNumber(t *testing.T) {
 func testWriteVerbatimString(t *testing.T) {
 	rw, assert := newTestWriter(t)
 	for _, c := range []struct {
-		p   string
+		p   [3]byte
 		v   string
 		s   string
 		err error
 	}{
-		{"", "hello", "", resp3.ErrInvalidVerbatimString},
-		{"t", "hello", "", resp3.ErrInvalidVerbatimString},
-		{"tx", "hello", "", resp3.ErrInvalidVerbatimString},
-		{"txtx", "hello", "", resp3.ErrInvalidVerbatimString},
-
-		{"foo", "", "=4\r\nfoo:\r\n", nil},
-		{"txt", "hello", "=9\r\ntxt:hello\r\n", nil},
-		{"mkd", "hello world", "=15\r\nmkd:hello world\r\n", nil},
-		{"bar", "hello\r\nworld", "=16\r\nbar:hello\r\nworld\r\n", nil},
+		{[3]byte{'f', 'o', 'o'}, "", "=4\r\nfoo:\r\n", nil},
+		{[3]byte{'t', 'x', 't'}, "hello", "=9\r\ntxt:hello\r\n", nil},
+		{[3]byte{'m', 'k', 'd'}, "hello world", "=15\r\nmkd:hello world\r\n", nil},
+		{[3]byte{'b', 'a', 'r'}, "hello\r\nworld", "=16\r\nbar:hello\r\nworld\r\n", nil},
 	} {
-		assert(c.s, c.err, rw.WriteVerbatimString([]byte(c.p), []byte(c.v)))
+		assert(c.s, c.err, rw.WriteVerbatimString([3]byte{c.p[0], c.p[1], c.p[2]}, []byte(c.v)))
 	}
 }
