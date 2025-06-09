@@ -745,6 +745,7 @@ func testReadVerbatimString(t *testing.T) {
 	for _, c := range []struct {
 		in    string
 		limit int
+		p     string
 		s     string
 		err   error
 	}{
@@ -766,10 +767,10 @@ func testReadVerbatimString(t *testing.T) {
 		{in: p("4\r\n:bar\r\n"), err: resp3.ErrInvalidVerbatimString},
 		{in: p("5\r\nf:bar\r\n"), err: resp3.ErrInvalidVerbatimString},
 		{in: p("6\r\nfo:bar\r\n"), err: resp3.ErrInvalidVerbatimString},
-		{in: p("4\r\nfoo:\r\n"), s: "foo:"},
-		{in: p("5\r\nfoo:b\r\n"), s: "foo:b"},
-		{in: p("6\r\nfoo:ba\r\n"), s: "foo:ba"},
-		{in: p("7\r\nfoo:bar\r\n"), s: "foo:bar"},
+		{in: p("4\r\nfoo:\r\n"), p: "foo"},
+		{in: p("5\r\nfoo:b\r\n"), p: "foo", s: "b"},
+		{in: p("6\r\nfoo:ba\r\n"), p: "foo", s: "ba"},
+		{in: p("7\r\nfoo:bar\r\n"), p: "foo", s: "bar"},
 
 		{in: p("5\r\nfoo:hello world\r\n"), err: resp3.ErrUnexpectedEOL},
 		{in: p("10\r\nfoo:hello\r\n"), err: resp3.ErrUnexpectedEOL},
@@ -782,13 +783,15 @@ func testReadVerbatimString(t *testing.T) {
 
 		{
 			in: p("11004\r\nfoo:" + strings.Repeat("hello world", 1000) + "\r\n"),
-			s:  "foo:" + strings.Repeat("hello world", 1000),
+			p:  "foo",
+			s:  strings.Repeat("hello world", 1000),
 		},
 
 		{
 			in: p(strconv.Itoa(resp3.DefaultSingleReadSizeLimit) + "\r\nfoo:" +
 				strings.Repeat("a", resp3.DefaultSingleReadSizeLimit-len("foo:")) + "\r\n"),
-			s: "foo:" + strings.Repeat("a", resp3.DefaultSingleReadSizeLimit-len("foo:")),
+			p: "foo",
+			s: strings.Repeat("a", resp3.DefaultSingleReadSizeLimit-len("foo:")),
 		},
 
 		{
@@ -801,13 +804,15 @@ func testReadVerbatimString(t *testing.T) {
 			in: p(strconv.Itoa(resp3.DefaultSingleReadSizeLimit+1) + "\r\nfoo:" +
 				strings.Repeat("a", resp3.DefaultSingleReadSizeLimit-len("foo:")+1) + "\r\n"),
 			limit: -1,
-			s:     "foo:" + strings.Repeat("a", resp3.DefaultSingleReadSizeLimit-len("foo:")+1),
+			p:     "foo",
+			s:     strings.Repeat("a", resp3.DefaultSingleReadSizeLimit-len("foo:")+1),
 		},
 
 		{
 			in:    p("7\r\nfoo:bar\r\n"),
 			limit: 7,
-			s:     "foo:bar",
+			p:     "foo",
+			s:     "bar",
 		},
 
 		{
@@ -819,8 +824,12 @@ func testReadVerbatimString(t *testing.T) {
 		withBuf := func(base []byte) {
 			rr, _ := newTestReader(c.in)
 			rr.SingleReadSizeLimit = c.limit
-			buf, err := rr.ReadVerbatimString(base)
-			assertReadResultEqual(t, append(base, c.s...), buf, c.err, err)
+			p, s, err := rr.ReadVerbatimString(base)
+			assertReadResultEqual(t, append(base, c.s...), s, c.err, err)
+			if err != nil {
+				return
+			}
+			assertBytes(t, c.p, p[:])
 		}
 		withBuf(nil)
 		withBuf([]byte("existing data"))
@@ -1009,7 +1018,7 @@ func benchmarkReadVerbatimString(b *testing.B) {
 	rr, reset := newTestReader(in)
 	for b.Loop() {
 		reset(in)
-		_, _ = rr.ReadVerbatimString(buf[:0])
+		_, _, _ = rr.ReadVerbatimString(buf[:0])
 	}
 }
 
@@ -2004,7 +2013,7 @@ func FuzzReader_VerbatimString(f *testing.F) {
 
 	f.Fuzz(func(_ *testing.T, data []byte) {
 		rr := resp3.NewReader(bytes.NewReader(data))
-		_, _ = rr.ReadVerbatimString(nil)
+		_, _, _ = rr.ReadVerbatimString(nil)
 	})
 }
 

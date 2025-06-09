@@ -202,12 +202,12 @@ var copyFuncs = [255]func(testing.TB, *resp3.ReadWriter, []byte){
 		(*resp3.Reader).ReadSimpleString,
 		(*resp3.Writer).WriteSimpleString),
 	resp3.TypeVerbatimString: func(tb testing.TB, rw *resp3.ReadWriter, buf []byte) {
-		b, err := rw.ReadVerbatimString(buf)
+		enc, data, err := rw.ReadVerbatimString(buf)
 		if err != nil {
 			tb.Fatalf("failed to read verbatim string: %s", err)
 		}
-		if err := rw.WriteVerbatimString([3]byte{b[0], b[1], b[2]}, b[4:]); err != nil {
-			tb.Fatalf("failed to write verbatim string %q: %s", string(b), err)
+		if err := rw.WriteVerbatimString(enc, data); err != nil {
+			tb.Fatalf("failed to write verbatim string %q %q: %s", string(enc[:]), string(data), err)
 		}
 	},
 }

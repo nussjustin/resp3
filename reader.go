@@ -137,7 +137,7 @@ func (rr *Reader) Reset(r io.Reader) {
 // Peek returns the Type of the next value.
 //
 // For backwards compatibility with RESP2, if the next value is either an array or
-// an blob string with length -1, TypeNull will be returned. ReadNull also handles
+// a blob string with length -1, TypeNull will be returned. ReadNull also handles
 // this case and will correctly parse the value, treating it as a normal null value.
 func (rr *Reader) Peek() (Type, error) {
 	t, err := rr.peek()
@@ -431,7 +431,7 @@ func (rr *Reader) ReadMapHeader() (n int64, chunked bool, err error) {
 // ReadNull reads a stream end marker.
 //
 // For backwards compatibility with RESP2, if the next value is either an array or
-// an blob string with length -1, ReadNull will treat the value as a normal null
+// a blob string with length -1, ReadNull will treat the value as a normal null
 // value.
 //
 // If the next type in the response is not null, ErrUnexpectedType is returned.
@@ -491,14 +491,15 @@ func (rr *Reader) ReadSimpleString(b []byte) ([]byte, error) {
 	return rr.readSimple(TypeSimpleString, b)
 }
 
-// ReadVerbatimString reads a verbatim string into b, returning the resulting slice.
+// ReadVerbatimString reads a verbatim string into b, returning the encoding and the result of appending the actual
+// string to b.
 //
 // If the next type in the response is not simple string, ErrUnexpectedType is returned.
-func (rr *Reader) ReadVerbatimString(b []byte) ([]byte, error) {
+func (rr *Reader) ReadVerbatimString(b []byte) (enc [3]byte, result []byte, err error) {
 	oldLen := len(b)
-	b, err := rr.readBlob(TypeVerbatimString, b)
+	b, err = rr.readBlob(TypeVerbatimString, b)
 	if err != nil {
-		return nil, err
+		return [3]byte{0, 0, 0}, nil, err
 	}
 	const verbatimPrefixLength = 3
 	if bs := b[oldLen:]; len(bs) < verbatimPrefixLength+1 || bs[verbatimPrefixLength] != ':' {
@@ -506,9 +507,11 @@ func (rr *Reader) ReadVerbatimString(b []byte) ([]byte, error) {
 		if n := verbatimPrefixLength*verbatimPrefixLength + 1; len(p) >= n {
 			p = p[:n]
 		}
-		return nil, fmt.Errorf("%w: %q", ErrInvalidVerbatimString, string(p))
+		return [3]byte{0, 0, 0}, nil, fmt.Errorf("%w: %q", ErrInvalidVerbatimString, string(p))
 	}
-	return b, nil
+	appended := b[oldLen:]
+	enc = [3]byte{appended[0], appended[1], appended[2]}
+	return enc, append(b[:oldLen], appended[4:]...), nil
 }
 
 func (rr *Reader) discardAggregate(t Type, nested bool) error {
@@ -609,7 +612,7 @@ func (rr *Reader) Discard(nested bool) (Type, error) {
 	case TypeNull:
 		err = rr.ReadNull()
 	case TypeVerbatimString:
-		_, err = rr.ReadVerbatimString(nil)
+		_, _, err = rr.ReadVerbatimString(nil)
 	}
 
 	if err != nil {
