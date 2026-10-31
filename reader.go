@@ -310,7 +310,7 @@ func (rr *Reader) ReadArrayHeader() (n int64, chunked bool, err error) {
 
 // ReadAttributeHeader reads an attribute header, returning the attribute size.
 //
-// If the array is chunked, n will be set to -1 and chunked will be set to true.
+// If the attribute is chunked, n will be set to -1 and chunked will be set to true.
 // If the next type in the response is not an attribute, ErrUnexpectedType is returned.
 func (rr *Reader) ReadAttributeHeader() (n int64, chunked bool, err error) {
 	return rr.readAggregateHeader(TypeAttribute)
@@ -432,7 +432,7 @@ func (rr *Reader) ReadInteger() (int64, error) {
 
 // ReadMapHeader reads a map header, returning the map size.
 //
-// If the array is chunked, n will be set to -1 and chunked will be set to true.
+// If the map is chunked, n will be set to -1 and chunked will be set to true.
 // If the next type in the response is not a map, ErrUnexpectedType is returned.
 func (rr *Reader) ReadMapHeader() (n int64, chunked bool, err error) {
 	return rr.readAggregateHeader(TypeMap)
@@ -463,7 +463,7 @@ func (rr *Reader) ReadNull() error {
 
 // ReadPushHeader reads a push header, returning the push size.
 //
-// If the array is chunked, n will be set to -1 and chunked will be set to true.
+// If the push is chunked, n will be set to -1 and chunked will be set to true.
 // If the next type in the response is not a push, ErrUnexpectedType is returned.
 func (rr *Reader) ReadPushHeader() (n int64, chunked bool, err error) {
 	return rr.readAggregateHeader(TypePush)
@@ -471,7 +471,7 @@ func (rr *Reader) ReadPushHeader() (n int64, chunked bool, err error) {
 
 // ReadSetHeader reads a set header, returning the set size.
 //
-// If the array is chunked, n will be set to -1 and chunked will be set to true.
+// If the set is chunked, n will be set to -1 and chunked will be set to true.
 // If the next type in the response is not a set, ErrUnexpectedType is returned.
 func (rr *Reader) ReadSetHeader() (n int64, chunked bool, err error) {
 	return rr.readAggregateHeader(TypeSet)
