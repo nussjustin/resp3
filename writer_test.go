@@ -3,6 +3,7 @@ package resp3_test
 import (
 	"bufio"
 	"bytes"
+	"crypto/rand"
 	"io"
 	"math/big"
 	"testing"
@@ -87,6 +88,50 @@ func TestWriterWrite(t *testing.T) {
 	t.Run("SimpleError", makeWriteSimpleTest('-', (*resp3.Writer).WriteSimpleError))
 	t.Run("SimpleString", makeWriteSimpleTest('+', (*resp3.Writer).WriteSimpleString))
 	t.Run("VerbatimString", testWriteVerbatimString)
+}
+
+func TestWriterWrite_Allocs(t *testing.T) {
+	makeTest := func(f func(w *resp3.Writer)) func(t *testing.T) {
+		return func(t *testing.T) {
+			var b bytes.Buffer
+
+			w := resp3.NewWriter(&b)
+
+			got := testing.AllocsPerRun(100, func() {
+				f(w)
+			})
+
+			if want := 0.0; got != want {
+				t.Errorf("got %.2f, want %.2f", got, want)
+			}
+		}
+	}
+
+	randStr := rand.Text()
+
+	t.Run("BlobChunk", makeTest(func(w *resp3.Writer) {
+		_ = w.WriteBlobChunk([]byte(randStr))
+	}))
+
+	t.Run("BlobError", makeTest(func(w *resp3.Writer) {
+		_ = w.WriteBlobError([]byte(randStr))
+	}))
+
+	t.Run("BlobString", makeTest(func(w *resp3.Writer) {
+		_ = w.WriteBlobString([]byte(randStr))
+	}))
+
+	t.Run("SimpleError", makeTest(func(w *resp3.Writer) {
+		_ = w.WriteSimpleError([]byte(randStr))
+	}))
+
+	t.Run("SimpleString", makeTest(func(w *resp3.Writer) {
+		_ = w.WriteSimpleString([]byte(randStr))
+	}))
+
+	t.Run("VercatimString", makeTest(func(w *resp3.Writer) {
+		_ = w.WriteVerbatimString([3]byte{'x', 'x', 'x'}, []byte(randStr))
+	}))
 }
 
 func newTestWriter(t *testing.T) (rw *resp3.Writer, assert func(expected string, expectedError error, err error)) {
