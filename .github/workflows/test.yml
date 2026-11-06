@@ -11,10 +11,19 @@ jobs:
       GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@v7
+      - uses: BotBooker/action-setup-valkey@v1
+        id: valkey
+        name: Run Valkey
       - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go-version }}
       - name: Test
         run: |
-          go test       ./...
-          go test -race ./...
+          go test -tags=integration       ./...
+        env:
+          REDIS_HOST: ${{ steps.valkey.outputs.connection-uri }}
+      - name: Test with race detector
+        run: |
+          go test -tags=integration -race ./...
+        env:
+          REDIS_HOST: ${{ steps.valkey.outputs.connection-uri }}

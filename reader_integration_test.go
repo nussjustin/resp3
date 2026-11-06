@@ -1,5 +1,4 @@
 //go:build integration
-// +build integration
 
 package resp3_test
 
@@ -100,6 +99,9 @@ func assertReadSimpleString(tb testing.TB, r *resp3.Reader, s []byte) {
 func TestReaderIntegration(t *testing.T) {
 	withRedisConn(t, func(conn io.ReadWriteCloser, rrw *resp3.ReadWriter) {
 		r := &rrw.Reader
+
+		mustWriteLines(t, conn, "*1", "$7", "FLUSHDB")
+		assertReadSimpleString(t, r, []byte("OK"))
 
 		mustWriteLines(t, conn, "*2", "$3", "GET", "$6", "string")
 		assertReadNull(t, r)

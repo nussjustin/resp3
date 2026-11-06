@@ -37,6 +37,8 @@ If your instance has a non-default config, you can use the `REDIS_HOST` environm
 REDIS_HOST=127.0.0.1:6380   go test -tags integration # different port
 REDIS_HOST=192.168.0.1:6380 go test -tags integration # different host
 REDIS_HOST=/tmp/redis.sock  go test -tags integration # unix socket
+REDIS_HOST=redis://192.168.0.1:6380 go test -tags integration # using redis:// DSN
+REDIS_HOST=valkey://user:pass@192.168.0.1:6380 go test -tags integration # using valkey:// DSN with user
 ```
 
 Note: If you want to test using a unix socket, make sure that the path to the socket starts with a slash,
